@@ -83,7 +83,6 @@ int main (void) {
 	char* hello = "hello diocane";
 	pid_t output_pid;
 
-	sleep(1);
 	hum_int_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&cen_ecu_addr, 0 , sizeof(cen_ecu_addr));
 	cen_ecu_addr.sin_family = AF_INET;

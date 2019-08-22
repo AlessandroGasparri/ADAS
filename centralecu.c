@@ -23,6 +23,20 @@ int readLine(int fd, char*str) {
     return (n>0);
 }
 
+void logOutput(char path[100], char str[MAXLINE]){
+    FILE *fptr;
+
+    fptr = fopen(path, "a");
+    if(fptr == NULL){
+        printf("File not found\n");
+    }
+    else{
+        fputs(str, fptr);
+        fputs("\n", fptr);
+        fclose(fptr);
+    }
+}
+
 
 void createSocket(int* serverFd, struct sockaddr* clientSockAddrPtr, int* clientLen, int port){
     int serverLen;
@@ -64,6 +78,15 @@ void createUDPSocket(int* serverFd, int port){
     bind(*serverFd, serverSockAddrPtr, serverLen);
 }
 
+void runThrottleControl(int fd, int* speed){
+    printf("Throttle running, speed: %d\n",*speed);
+    char str[MAXLINE];
+    while(readLine(fd, str)){
+        printf("Throttle: %s\n", str);
+    }
+    exit(0);
+}
+
 
 
 int main(){
@@ -95,28 +118,45 @@ else {
 
 }*/
 
-int cen_ecu_sockFd, hum_int_len, hum_int_Fd;
+int cen_ecu_sockUDPFd, hum_int_len, hum_int_Fd;
 struct sockaddr* clientAddr;
 pid_t hum_int_pid;
 char buffer[MAXLINE];
 
-createUDPSocket(&cen_ecu_sockFd, UDP_CENECU_PORT); //Genereting socket for human interface
-hum_int_pid = fork();
-if(hum_int_pid == 0 )
+int thr_sock_pair[2];
+int speed = 0;
+
+createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Genereting socket for human interface
+socketpair(AF_UNIX, SOCK_STREAM, 0, thr_sock_pair);
+// hum_int_pid = fork();
+if(fork() == 0 )
 {
     execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a focked process on a new terminal
     exit(1);
 }
+else if( fork() == 0 ) {
+    close(thr_sock_pair[0]);
+    runThrottleControl(thr_sock_pair[1], &speed);
+} 
 else {
-    
+    close(thr_sock_pair[1]);
     do{
         int n, len;
         printf("Waiting for a message...\n");
-        n = recvfrom(cen_ecu_sockFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
+        n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
         buffer[n] = '\0';
-        printf("Client %s\n", buffer);
+        if(strcmp(buffer,"FINE") != 0){
+            printf("Writing to thr\n");
+            write(thr_sock_pair[0], buffer, strlen(buffer)+1);
+            logOutput("centralecu.log", buffer);
+        }
     }while(strcmp(buffer,"FINE") != 0);
 }
+
+
+
+printf("FINE\n");
+exit(0);
 return 1;
 }
 
