@@ -87,6 +87,30 @@ void runThrottleControl(int fd, int* speed){
     exit(0);
 }
 
+void handleHumanInputs(){
+
+}
+
+void runFrontWindshieldCamera(){
+
+    printf("Front camera is running\n");
+    FILE *fptr;
+    fptr = fopen("input/frontCamera.data", "r");
+    int speedLimit;
+    char line[MAXLINE];
+
+    
+    while (fgets(line, sizeof(line), fptr)){
+        speedLimit = atoi(line);
+        printf("%d\n", speedLimit );
+        
+        sleep(2);
+    }
+    fclose(fptr);
+    exit(0);
+}
+
+
 
 
 int main(){
@@ -120,7 +144,7 @@ else {
 
 int cen_ecu_sockUDPFd, hum_int_len, hum_int_Fd;
 struct sockaddr* clientAddr;
-pid_t hum_int_pid;
+pid_t fwc_pid, tc_pid;
 char buffer[MAXLINE];
 
 int thr_sock_pair[2];
@@ -129,15 +153,21 @@ int speed = 0;
 createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Genereting socket for human interface
 socketpair(AF_UNIX, SOCK_STREAM, 0, thr_sock_pair);
 // hum_int_pid = fork();
+printf("Processo padre %d\n", getpid());
 if(fork() == 0 )
 {
     execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a focked process on a new terminal
     exit(1);
 }
-else if( fork() == 0 ) {
+else if( (tc_pid = fork()) == 0 ) {
+    printf("  trottol da %d\n", getpid());
     close(thr_sock_pair[0]);
     runThrottleControl(thr_sock_pair[1], &speed);
-} 
+}
+else if( (fwc_pid = fork()) == 0 ) {
+    printf("  camera da %d\n", getpid());
+    runFrontWindshieldCamera();
+}
 else {
     close(thr_sock_pair[1]);
     do{
@@ -154,7 +184,8 @@ else {
 }
 
 
-
+kill(fwc_pid, SIGKILL);
+kill(tc_pid, SIGKILL);
 printf("FINE\n");
 exit(0);
 return 1;
