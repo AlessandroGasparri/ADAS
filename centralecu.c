@@ -10,7 +10,9 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h> /* For AFINET sockets */
+#include <malloc.h>
 #define DEFAULT_PROTOCOL 0
+#define FWC_INPUT '0'
 #define HUMAN_INTERFACE_PORT 1025
 #define UDP_CENECU_PORT 1026
 #define MAXLINE 1024
@@ -79,10 +81,10 @@ void createUDPSocket(int* serverFd, int port){
 }
 
 void runThrottleControl(int fd, int* speed){
-    printf("Throttle running, speed: %d\n",*speed);
+   // printf("Throttle running, speed: %d\n",*speed);
     char str[MAXLINE];
     while(readLine(fd, str)){
-        printf("Throttle: %s\n", str);
+       // printf("Throttle: %s\n", str);
     }
     exit(0);
 }
@@ -91,23 +93,72 @@ void handleHumanInputs(){
 
 }
 
+void sendToCenEcu(int fd, char str[MAXLINE]){
+    struct sockaddr_in cen_ecu_addr;
+    memset(&cen_ecu_addr, 0 , sizeof(cen_ecu_addr));
+    cen_ecu_addr.sin_family = AF_INET;
+    cen_ecu_addr.sin_port = htons (UDP_CENECU_PORT);
+    cen_ecu_addr.sin_addr.s_addr= INADDR_ANY;
+
+    sendto(fd, (const char *) str, strlen(str), MSG_CONFIRM,
+            (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
+}
+
 void runFrontWindshieldCamera(){
 
     printf("Front camera is running\n");
+    int fc_sockFd;
     FILE *fptr;
     fptr = fopen("input/frontCamera.data", "r");
     int speedLimit;
     char line[MAXLINE];
+    char output[MAXLINE];
+    output[0] = FWC_INPUT;
 
-    
+    fc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+
     while (fgets(line, sizeof(line), fptr)){
-        speedLimit = atoi(line);
-        printf("%d\n", speedLimit );
-        
-        sleep(2);
+        //speedLimit = atoi(line);
+        strcpy(output + 1, line);
+        sendToCenEcu(fc_sockFd, output);
+        sleep(1);
     }
     fclose(fptr);
+    close(fc_sockFd);
     exit(0);
+}
+
+char* substring(char *src, int from){
+    
+    int len = 0, i = 0;
+    while(*(src + from + len) != '\0'){
+        len++;
+    }
+    len++;
+
+    
+    char *dest = (char*) malloc(sizeof(char) * (len + 1));
+    
+    for (i = from; i< (from + len); i++ ){
+        *dest = *(src + i);
+        dest ++;
+    }
+    dest -= len;
+    return dest;
+
+}
+
+void handleSensorInput(char input[MAXLINE]){
+
+    char code;
+    code = input[0];
+    char *command;
+    command = substring(input, 1);
+
+
+    printf("command code: %c\n", code);
+
+    printf("command %s\n", command);
 }
 
 
@@ -172,12 +223,11 @@ else {
     close(thr_sock_pair[1]);
     do{
         int n, len;
-        printf("Waiting for a message...\n");
         n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
         buffer[n] = '\0';
         if(strcmp(buffer,"FINE") != 0){
-            printf("Writing to thr\n");
-            write(thr_sock_pair[0], buffer, strlen(buffer)+1);
+            handleSensorInput(buffer);
+            //write(thr_sock_pair[0], buffer, strlen(buffer)+1);
             logOutput("centralecu.log", buffer);
         }
     }while(strcmp(buffer,"FINE") != 0);
