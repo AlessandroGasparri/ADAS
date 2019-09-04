@@ -14,7 +14,7 @@
 #define DEFAULT_PROTOCOL 0
 #define FWC_INPUT '0'
 #define HUMAN_INTERFACE_PORT 1025
-#define UDP_CENECU_PORT 1026
+#define UDP_CENECU_PORT 1026 //Default UDP socket port for central ECU
 #define MAXLINE 1024
 
 int readLine(int fd, char*str) {
@@ -101,7 +101,7 @@ void sendToCenEcu(int fd, char str[MAXLINE]){
     cen_ecu_addr.sin_addr.s_addr= INADDR_ANY;
 
     sendto(fd, (const char *) str, strlen(str), MSG_CONFIRM,
-            (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
+        (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
 }
 
 void runFrontWindshieldCamera(){
@@ -129,7 +129,7 @@ void runFrontWindshieldCamera(){
 }
 
 char* substring(char *src, int from){
-    
+
     int len = 0, i = 0;
     while(*(src + from + len) != '\0'){
         len++;
@@ -166,79 +166,80 @@ void handleSensorInput(char input[MAXLINE]){
 
 int main(){
 
-/*int cen_ecu_Fd, hum_int_len, hum_int_Fd, hum_int_status;
-struct sockaddr* hum_int_SockAddrPtr;
-pid_t hum_int_pid;
-createSocket(&cen_ecu_Fd, hum_int_SockAddrPtr, &hum_int_len, HUMAN_INTERFACE_PORT); //Genereting socket for human interface
-hum_int_pid = fork();
-if(hum_int_pid == 0 )
-{
-    execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a focked process on a new terminal
-    exit(1);
-}
-else {
-    printf("waiting for the human interface...\n");
-    hum_int_Fd=accept(cen_ecu_Fd,hum_int_SockAddrPtr,&hum_int_len); //waiting the connection of the human interface generated
-    printf("human interface connected\n %d", hum_int_Fd);
-    char str[200];
-    while(readLine(hum_int_Fd, str) && strcmp(str,"FINE") != 0){
-        printf("%s\n", str);
+    /*int cen_ecu_Fd, hum_int_len, hum_int_Fd, hum_int_status;
+    struct sockaddr* hum_int_SockAddrPtr;
+    pid_t hum_int_pid;
+    createSocket(&cen_ecu_Fd, hum_int_SockAddrPtr, &hum_int_len, HUMAN_INTERFACE_PORT); //Genereting socket for human interface
+    hum_int_pid = fork();
+    if(hum_int_pid == 0 )
+    {
+        execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a focked process on a new terminal
+        exit(1);
     }
-    waitpid(hum_int_pid, &hum_int_status, 0);
-
-    printf("\nFINE %d", hum_int_status);
-    close (hum_int_Fd); // Close the socket 
-    exit (0); // Terminate 
-
-
-}*/
-
-int cen_ecu_sockUDPFd, hum_int_len, hum_int_Fd;
-struct sockaddr* clientAddr;
-pid_t fwc_pid, tc_pid;
-char buffer[MAXLINE];
-
-int thr_sock_pair[2];
-int speed = 0;
-
-createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Genereting socket for human interface
-socketpair(AF_UNIX, SOCK_STREAM, 0, thr_sock_pair);
-// hum_int_pid = fork();
-printf("Processo padre %d\n", getpid());
-if(fork() == 0 )
-{
-    execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a focked process on a new terminal
-    exit(1);
-}
-else if( (tc_pid = fork()) == 0 ) {
-    printf("  trottol da %d\n", getpid());
-    close(thr_sock_pair[0]);
-    runThrottleControl(thr_sock_pair[1], &speed);
-}
-else if( (fwc_pid = fork()) == 0 ) {
-    printf("  camera da %d\n", getpid());
-    runFrontWindshieldCamera();
-}
-else {
-    close(thr_sock_pair[1]);
-    do{
-        int n, len;
-        n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
-        buffer[n] = '\0';
-        if(strcmp(buffer,"FINE") != 0){
-            handleSensorInput(buffer);
-            //write(thr_sock_pair[0], buffer, strlen(buffer)+1);
-            logOutput("centralecu.log", buffer);
+    else {
+        printf("waiting for the human interface...\n");
+        hum_int_Fd=accept(cen_ecu_Fd,hum_int_SockAddrPtr,&hum_int_len); //waiting the connection of the human interface generated
+        printf("human interface connected\n %d", hum_int_Fd);
+        char str[200];
+        while(readLine(hum_int_Fd, str) && strcmp(str,"FINE") != 0){
+            printf("%s\n", str);
         }
-    }while(strcmp(buffer,"FINE") != 0);
-}
+        waitpid(hum_int_pid, &hum_int_status, 0);
+
+        printf("\nFINE %d", hum_int_status);
+        close (hum_int_Fd); // Close the socket 
+        exit (0); // Terminate 
 
 
-kill(fwc_pid, SIGKILL);
-kill(tc_pid, SIGKILL);
-printf("FINE\n");
-exit(0);
-return 1;
+    }*/
+
+    int cen_ecu_sockUDPFd; //UDP socket descriptor Central ECU
+    int hum_int_len; // NON USATO DA DEFINIRE
+    int hum_int_Fd; //NON USATO DA DEFINIRE
+    struct sockaddr* clientAddr;
+    pid_t fwc_pid; //PID front wide camera process
+    pid_t tc_pid; //PID throttle control process
+    char buffer[MAXLINE]; //Buffer to store UDP messages
+    int thr_sock_pair[2]; //TCP socket descriptors to communicate with throttle
+    int speed = 0; //Car speed
+
+    createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
+    socketpair(AF_UNIX, SOCK_STREAM, 0, thr_sock_pair); //Handshaking of TCP sockets now in thr_sock_pair i have 2 connected sockets
+    // hum_int_pid = fork();
+    printf("Processo padre %d\n", getpid());
+    if(fork() == 0){ //I'm the child humaninterface
+        execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
+        exit(1);
+    }
+    else if((tc_pid = fork()) == 0){ //
+        printf("  trottol da %d\n", getpid());
+        close(thr_sock_pair[0]);
+        runThrottleControl(thr_sock_pair[1], &speed);
+    }
+    else if( (fwc_pid = fork()) == 0 ) {
+        printf("  camera da %d\n", getpid());
+        runFrontWindshieldCamera();
+    }
+    else {
+        close(thr_sock_pair[1]);
+        do{
+            int n, len;
+            n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
+            buffer[n] = '\0';
+            if(strcmp(buffer,"FINE") != 0){
+                handleSensorInput(buffer);
+                //write(thr_sock_pair[0], buffer, strlen(buffer)+1);
+                logOutput("centralecu.log", buffer);
+            }
+        }while(strcmp(buffer,"FINE") != 0);
+    }
+
+
+    kill(fwc_pid, SIGKILL);
+    kill(tc_pid, SIGKILL);
+    printf("FINE\n");
+    exit(0);
+    return 1;
 }
 
 
