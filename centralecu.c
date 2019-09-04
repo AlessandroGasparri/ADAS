@@ -199,29 +199,30 @@ int main(){
     struct sockaddr* clientAddr;
     pid_t fwc_pid; //PID front wide camera process
     pid_t tc_pid; //PID throttle control process
+    pid_t hum_int_pid; //PID for human interface
     char buffer[MAXLINE]; //Buffer to store UDP messages
     int thr_sock_pair[2]; //TCP socket descriptors to communicate with throttle
     int speed = 0; //Car speed
 
     createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
     socketpair(AF_UNIX, SOCK_STREAM, 0, thr_sock_pair); //Handshaking of TCP sockets now in thr_sock_pair i have 2 connected sockets
-    // hum_int_pid = fork();
+    //  = fork();
     printf("Processo padre %d\n", getpid());
-    if(fork() == 0){ //I'm the child humaninterface
+    if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
         execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
-        exit(1);
+        exit(0);
     }
-    else if((tc_pid = fork()) == 0){ //
+    else if((tc_pid = fork()) == 0){
         printf("  trottol da %d\n", getpid());
-        close(thr_sock_pair[0]);
-        runThrottleControl(thr_sock_pair[1], &speed);
+        close(thr_sock_pair[0]); //I'm the child and i close father socket
+        runThrottleControl(thr_sock_pair[1], &speed); //funzione per controllare la velocita TODO
     }
     else if( (fwc_pid = fork()) == 0 ) {
         printf("  camera da %d\n", getpid());
         runFrontWindshieldCamera();
     }
-    else {
-        close(thr_sock_pair[1]);
+    else {//In this else i'm the father
+        close(thr_sock_pair[1]); //I'm the father and i close child socket
         do{
             int n, len;
             n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
@@ -239,7 +240,7 @@ int main(){
     kill(tc_pid, SIGKILL);
     printf("FINE\n");
     exit(0);
-    return 1;
+    return 0;
 }
 
 
