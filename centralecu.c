@@ -95,7 +95,7 @@ void sendToCenEcu(int fd, char str[MAXLINE]){
     cen_ecu_addr.sin_port = htons (UDP_CENECU_PORT);
     cen_ecu_addr.sin_addr.s_addr= INADDR_ANY;
 
-    sendto(fd, (const char *) str, strlen(str), MSG_CONFIRM,
+    sendto(fd, (const char *) str, strlen(str) + 1, MSG_CONFIRM,
         (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
 }
 
@@ -130,6 +130,7 @@ void runFrontWindshieldCamera(){
 void runBrakeByWire(int fd){
     char str[MAXLINE];
     while(1){
+        printf("PIPPOOOO");
         int n = 0;
         n = read(fd, str, 1);
         if(n != 0){
@@ -227,17 +228,13 @@ int main(){
     pid_t tc_pid; //PID throttle control process
     pid_t hum_int_pid; //PID for human interface
     pid_t bbw_pid; //PID for break by wire
-    int speed = 0; //Car speed
+    int speed = 200; //Car speed
     char buffer[MAXLINE]; //Buffer to store UDP messages
     int started = 0; //Boolean variable to tell if process has received INIZIO
 
     createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
     socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
     socketpair(AF_UNIX, SOCK_STREAM, 0, bbw_sock_pair);
-    
-    int i = 0;
-    for(i = 0; i < MAXLINE; i++)
-        buffer[i]='\0';
     
     printf("Processo padre %d\n", getpid());
     if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
@@ -267,10 +264,10 @@ int main(){
             printf("%s\n", buffer);
             int bufferlenght = strlen(buffer);
             printf("Lunghezza buffer: %d\n", bufferlenght);
+            
             if(!started){
                 if(strcmp(buffer,"INIZIO") == 0){
                     started = 1;
-
                 }
 
             }
@@ -282,30 +279,30 @@ int main(){
                     code = buffer[0];
                     char *command;
                     command = substring(buffer, 1);
-                    printf("LISTENING FOR THINGS");
                     switch(code){
                         case FRONT_CAMERA_CODE:
-
                             if(command[0] > '0' && command[0] < '9'){ //There is a number to process
                                 int newSpeed = atoi(command);
                                 if(newSpeed < speed){
-                                    write(bbw_sock_pair[0], command, strlen(command) + 1);
+                                    char stroutput[MAXLINE];
+                                    char valueBuffer[5];
+                                    sprintf(valueBuffer, "%d", speed);
+                                    strcpy(stroutput, valueBuffer);
+                                    strcat(stroutput, "-");
+                                    strcat(stroutput, command);
+                                    write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                 }
                             }else{ // We have a string to process
-                                printf("command %s", command);
+                                //printf(" %s", command);
                             }
                             break;
                         default: printf("Unknown command. %s\n",command);
                     }
 
-                    /*printf("command code: %c\n", code);
-
-                    printf("command %s\n", command);*/
+                    
                     logOutput("centralecu.log", buffer);
                 }
-            }
-            for(n = 0; n<bufferlenght;n++){
-                buffer[n]='\0';
+                
             }
         }while(strcmp(buffer,"FINE") != 0);
     }

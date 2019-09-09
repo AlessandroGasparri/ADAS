@@ -97,7 +97,7 @@ int main (void) {
 	if( output_pid != 0){
 		do {
 			scanf("%s", &str);
-			sendto(hum_int_sockFd, (const char *) str, strlen(str), MSG_CONFIRM,
+			sendto(hum_int_sockFd, (const char *) str, strlen(str) + 1, MSG_CONFIRM,
     		(const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
 		}while( strcmp(str,"FINE") != 0 );
 
