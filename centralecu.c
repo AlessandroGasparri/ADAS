@@ -234,9 +234,11 @@ int main(){
     createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
     socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
     socketpair(AF_UNIX, SOCK_STREAM, 0, bbw_sock_pair);
+    
     int i = 0;
     for(i = 0; i < MAXLINE; i++)
         buffer[i]='\0';
+    
     printf("Processo padre %d\n", getpid());
     if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
         execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
