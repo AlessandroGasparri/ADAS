@@ -115,6 +115,10 @@ void runFrontWindshieldCamera(){
     while (fgets(line, sizeof(line), fptr)){
         //speedLimit = atoi(line);
         strcpy(output + 1, line);
+        output[strlen(output)-1] = '\0';
+        //printf("line: %s ,Lunga: %d", line, strlen(line));
+        //printf("outp: %s ,Lunga: %d\n\n", output, strlen(output));
+
         sendToCenEcu(fc_sockFd, output);
         sleep(1);
     }
@@ -230,7 +234,9 @@ int main(){
     createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
     socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
     socketpair(AF_UNIX, SOCK_STREAM, 0, bbw_sock_pair);
-    
+    int i = 0;
+    for(i = 0; i < MAXLINE; i++)
+        buffer[i]='\0';
     printf("Processo padre %d\n", getpid());
     if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
         execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
@@ -256,8 +262,9 @@ int main(){
         do{
             int n, len;
             n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
-            buffer[n] = '\0';
-            printf("partito %s", buffer);
+            printf("%s\n", buffer);
+            int bufferlenght = strlen(buffer);
+            printf("Lunghezza buffer: %d\n", bufferlenght);
             if(!started){
                 if(strcmp(buffer,"INIZIO") == 0){
                     started = 1;
@@ -289,15 +296,18 @@ int main(){
                         default: printf("Unknown command. %s\n",command);
                     }
 
-                    printf("command code: %c\n", code);
+                    /*printf("command code: %c\n", code);
 
-                    printf("command %s\n", command);
+                    printf("command %s\n", command);*/
                     logOutput("centralecu.log", buffer);
                 }
             }
+            for(n = 0; n<bufferlenght;n++){
+                buffer[n]='\0';
+            }
         }while(strcmp(buffer,"FINE") != 0);
     }
-
+    close(cen_ecu_sockUDPFd);
 
     kill(fwc_pid, SIGKILL);
     kill(tc_pid, SIGKILL);
