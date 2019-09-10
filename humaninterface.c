@@ -80,7 +80,7 @@ int main (void) {
 	struct sockaddr_in cen_ecu_addr;
 	pid_t hum_int_pid;
 	char buffer[MAXLINE];
-	char* hello = "hello diocane";
+	char* hello = "hello";
 	pid_t output_pid;
 
 	hum_int_sockFd = socket(AF_INET, SOCK_DGRAM, 0);

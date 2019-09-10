@@ -4,9 +4,8 @@
 #define BRAKE_BY_WIRE_CODE '1'
 #define THROTTLE_CONTROL_CODE '2'
 #define HALT_CODE '3'
-
-static const int DEFAULT_PROTOCOL = 0;
-static const int HUMAN_INTERFACE_PORT = 1025;
-static const int UDP_CENECU_PORT = 1026;
-static const int MAXLINE = 1024;
+#define DEFAULT_PROTOCOL 0
+#define HUMAN_INTERFACE_PORT 1025
+#define UDP_CENECU_PORT 1026
+#define MAXLINE 1024
 #endif
