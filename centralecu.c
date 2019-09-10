@@ -178,7 +178,7 @@ void runFrontWindshieldCamera(){
 void runBrakeByWire(int fd){
     char str[MAXLINE];
     char ack[2];
-    int speeds[2];
+    int newSpeed;
     int bbw_sockFd;
     strcpy(ack, "1"); 
     struct timeval tv;
@@ -192,15 +192,11 @@ void runBrakeByWire(int fd){
         n = read(fd, str, 1);
         if(n > 0){
             readLine(fd, str+1);
-            char *ptr = strtok(str, "-");
-            int i = 0;
-            while(ptr != NULL){
-                speeds[i] = atoi(ptr);
-                ptr = strtok(NULL, "-");
-                i++;
-            }
-            while(speeds[0]>speeds[1]){
-                speeds[0] -= 5;
+            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
+            char *ptr = substring(str, 5); //strlen("FRENO ") = 5
+            newSpeed = atoi(ptr);
+            while(newSpeed > 0){
+                newSpeed -= 5;
                 sendToCenEcu(bbw_sockFd, ack);
                 sleep(1);
             }
@@ -318,19 +314,18 @@ int main(){
                                         newSpeed = readSpeed;
                                         printf("updating speed from %d to %d\n", speed, newSpeed);
                                         
-                                    if(readSpeed < speed ){
                                         char stroutput[MAXLINE];
                                         char valueBuffer[5];
-                                        sprintf(valueBuffer, "%d", speed);
-                                        strcpy(stroutput, valueBuffer);
-                                        strcat(stroutput, "-");
-                                        strcat(stroutput, command); //currentspeed-speed that we have to reach
+
+                                    if(readSpeed < speed ){
+                                        sprintf(valueBuffer, "%d", speed - newSpeed);
+                                        strcpy(stroutput, "FRENO ");
+                                        strcat(stroutput, valueBuffer); //currentspeed-speed that we have to reach
                                         strcat(stroutput, "\0");
                                         write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                     }
                                     else{
-                                        char stroutput[MAXLINE];
-                                        char valueBuffer[5];
+
                                         sprintf(valueBuffer, "%d", newSpeed - speed);
                                         strcpy(stroutput, "INCREMENTO ");
                                         strcat(stroutput, valueBuffer); //currentspeed-speed that we have to reach
