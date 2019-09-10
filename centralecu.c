@@ -13,6 +13,7 @@
 #include <malloc.h>
 #include "constants.h"
 
+//Generic functions that can be in a util file
 int readLine(int fd, char*str) {
     int n; 
     do {
@@ -35,7 +36,26 @@ void logOutput(char path[100], char str[MAXLINE]){
     }
 }
 
+char* substring(char *src, int from){
 
+    int len = 0, i = 0;
+    while(*(src + from + len) != '\0'){
+        len++;
+    }
+    len++;
+
+    
+    char *dest = (char*) malloc(sizeof(char) * (len + 1));
+    
+    for (i = from; i< (from + len); i++ ){
+        *dest = *(src + i);
+        dest ++;
+    }
+    dest -= len;
+    return dest;
+}
+
+//Socket and communication functions
 void createSocket(int* serverFd, struct sockaddr* clientSockAddrPtr, int* clientLen, int port){
     int serverLen;
     struct sockaddr_in serverINETAddress;/*Server address*/
@@ -87,61 +107,8 @@ void sendToCenEcu(int fd, char str[MAXLINE]){
         (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
 }
 
-char* substring(char *src, int from){
 
-    int len = 0, i = 0;
-    while(*(src + from + len) != '\0'){
-        len++;
-    }
-    len++;
-
-    
-    char *dest = (char*) malloc(sizeof(char) * (len + 1));
-    
-    for (i = from; i< (from + len); i++ ){
-        *dest = *(src + i);
-        dest ++;
-    }
-    dest -= len;
-    return dest;
-}
-
-void runThrottleControl(int fd){
-   char str[MAXLINE];
-    char ack[2];
-    int newSpeed;
-    int tc_sockFd;
-    strcpy(ack, "2"); 
-    struct timeval tv;
-    tv.tv_sec = 1;
-    tv.tv_usec = 0;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-    tc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
-
-    while(1){
-        int n = 0;
-        n = read(fd, str, 1);
-        if(n > 0){
-            readLine(fd, str+1);
-            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
-            char *ptr = substring(str, 10); //strlen("INCREMENTO ") = 10
-            newSpeed = atoi(ptr);
-            while(newSpeed > 0){
-                newSpeed -= 5;
-                sendToCenEcu(tc_sockFd, ack);
-                logOutput("throttle.log", "AUMENTO 5");        
-                sleep(1);
-            }
-        }
-        else{
-            logOutput("throttle.log", "NO ACTION");        
-        }
-        sleep(1);
-    }
-    close(tc_sockFd);
-    exit(0);
-}
-
+//Sensors functions
 void runFrontWindshieldCamera(){
 
     printf("Front camera is running\n");
@@ -171,12 +138,14 @@ void runFrontWindshieldCamera(){
     exit(0);
 }
 
+//Actuators functionz
 void runBrakeByWire(int fd){
     char str[MAXLINE];
     char ack[2];
+    ack[0] = BRAKE_BY_WIRE_CODE;
+    ack[1] = '\0';
     int newSpeed;
-    int bbw_sockFd;
-    strcpy(ack, "1"); 
+    int bbw_sockFd; 
     struct timeval tv;
     tv.tv_sec = 1;
     tv.tv_usec = 0;
@@ -219,8 +188,80 @@ void runBrakeByWire(int fd){
     exit(0);
 }
 
-void runSteerByWire(int fd){
+void runThrottleControl(int fd){
+    char str[MAXLINE];
+    char ack[2];
+    ack[0] = THROTTLE_CONTROL_CODE;
+    ack[1] = '\0';
+    int newSpeed;
+    int tc_sockFd;
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    tc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
 
+    while(1){
+        int n = 0;
+        n = read(fd, str, 1);
+        if(n > 0){
+            readLine(fd, str+1);
+            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
+            char *ptr = substring(str, 10); //strlen("INCREMENTO ") = 10
+            newSpeed = atoi(ptr);
+            while(newSpeed > 0){
+                newSpeed -= 5;
+                sendToCenEcu(tc_sockFd, ack);
+                logOutput("throttle.log", "AUMENTO 5");        
+                sleep(1);
+            }
+        }
+        else{
+            logOutput("throttle.log", "NO ACTION");        
+        }
+        sleep(1);
+    }
+    close(tc_sockFd);
+    exit(0);
+}
+
+void runSteerByWire(int fd){
+    char str[10];
+    char ack[2];
+    ack[0] = STEER_BY_WIRE_CODE;
+    ack[1] = '\0';
+    int newSpeed;
+    int sbw_sockFd;
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);//non bloccante
+    sbw_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    while(1){
+        int n = 0;
+        n = read(fd, str, 1);
+        if(n > 0){
+            readLine(fd, str+1);
+            char toWrite[40];
+            strcpy(toWrite, "STO GIRANDO A ");
+            strcat(toWrite, str);
+            int i;
+            printf("%s\n", "Entrato\n");
+            for(i = 0; i < 4; i++){
+                logOutput("steer.log", toWrite);
+                printf("%s\n", toWrite);
+                sleep(1);
+            }
+            sendToCenEcu(sbw_sockFd, ack);
+        }
+        else{
+            logOutput("steer.log", "NO ACTION");        
+        }
+        sleep(1);
+    }
+    close(sbw_sockFd);
+    exit(0);
 }
 
 int main(){
@@ -238,9 +279,10 @@ int main(){
     pid_t sbw_pid; //PID for steer by wire
     int speed = 50; //Car speed
     int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
+    int steering = 0;
     int newSpeed = speed;
     char buffer[MAXLINE]; //Buffer to store UDP messages
-    int started = 0; //Boolean variable to tell if process has received INIZIO
+    int started = 1; //Boolean variable to tell if process has received INIZIO
 
     createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
     socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
@@ -302,7 +344,7 @@ int main(){
                                 if(!updatingSpeed && readSpeed != speed){
                                         updatingSpeed = 1;
                                         newSpeed = readSpeed;
-                                        printf("updating speed from %d to %d\n", speed, newSpeed);
+                                        //printf("updating speed from %d to %d\n", speed, newSpeed);
                                         char valueBuffer[5];
 
                                     if(readSpeed < speed ){
@@ -327,26 +369,38 @@ int main(){
                                     strcpy(stroutput, "FRENO -1");
                                     write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                 }
+                                else if(steering == 0 && (strcmp(command, "DESTRA") == 0 || strcmp(command, "SINISTRA") == 0)){
+                                    steering = 1;
+                                    strcpy(stroutput, command);
+                                    write(sbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                }
+                                else{
+                                    logOutput("centralecu.log", "Comando sconosciuto.");
+                                }
                             }
                             break;
                         case BRAKE_BY_WIRE_CODE:
                             speed -= 5;
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
-                            printf("ack ricevuto nuova vel %d\n", speed);
+                            //printf("ack ricevuto nuova vel %d\n", speed);
 
                             break;
                         case THROTTLE_CONTROL_CODE:
                             speed += 5;
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
-                            printf("ack ricevuto nuova vel %d\n", speed);
+                            //printf("ack ricevuto nuova vel %d\n", speed);
 
                             break;
                         case HALT_CODE:
                             speed = 0;
                             started = 0;
-                            printf("HALT ricevuto nuova vel %d\n", speed);
+                            //printf("HALT ricevuto nuova vel %d\n", speed);
+                            break;
+                        case STEER_BY_WIRE_CODE:
+                            steering = 0;
+                            printf("Ack ricevuto fine sterzata\n");
                             break;
                         default: printf("Unknown command. %s\n",command);
                     }
@@ -361,6 +415,7 @@ int main(){
     kill(fwc_pid, SIGKILL);
     kill(tc_pid, SIGKILL);
     kill(bbw_pid, SIGKILL);
+    kill(sbw_pid, SIGKILL);
     printf("FINE\n");
     exit(0);
     return 0;
