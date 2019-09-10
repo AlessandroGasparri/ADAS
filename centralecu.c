@@ -129,16 +129,29 @@ void runFrontWindshieldCamera(){
 
 void runBrakeByWire(int fd){
     char str[MAXLINE];
+    int speeds[2];
     while(1){
-        printf("PIPPOOOO");
         int n = 0;
         n = read(fd, str, 1);
+        printf("%d\n",n);
         if(n != 0){
             readLine(fd, str+1);
-            printf("COMANDO: %s", str);
+            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
+            char *ptr = strtok(str, "-");
+            int i = 0;
+            while(ptr != NULL){
+                speeds[i] = atoi(ptr);
+                printf("%s\n",ptr);
+                ptr = strtok(NULL, "-");
+                i++;
+            }
+            printf("\ncurr: %d, toReach: %d\n",speeds[0], speeds[1]);
+            if(speeds[0] != speeds[1]){//!= because the control on > already was performed before sending the message
+                printf("DECREMENTO 5\n");
+            }
         }
         else{
-            printf("NO ACTION");
+            printf("NO ACTION\n");
         }
         sleep(1);
     }
@@ -228,7 +241,7 @@ int main(){
     pid_t tc_pid; //PID throttle control process
     pid_t hum_int_pid; //PID for human interface
     pid_t bbw_pid; //PID for break by wire
-    int speed = 200; //Car speed
+    int speed = 0; //Car speed
     char buffer[MAXLINE]; //Buffer to store UDP messages
     int started = 0; //Boolean variable to tell if process has received INIZIO
 
@@ -261,10 +274,9 @@ int main(){
         do{
             int n, len;
             n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
-            printf("%s\n", buffer);
+            /*printf("%s\n", buffer);
             int bufferlenght = strlen(buffer);
-            printf("Lunghezza buffer: %d\n", bufferlenght);
-            
+            printf("Lunghezza buffer: %d\n", bufferlenght);*/
             if(!started){
                 if(strcmp(buffer,"INIZIO") == 0){
                     started = 1;
@@ -289,7 +301,9 @@ int main(){
                                     sprintf(valueBuffer, "%d", speed);
                                     strcpy(stroutput, valueBuffer);
                                     strcat(stroutput, "-");
-                                    strcat(stroutput, command);
+                                    strcat(stroutput, command); //currentspeed-speed that we have to reach
+                                    strcat(stroutput, "\0");
+                                    printf("Scrivo a bbw: %s\n", stroutput);
                                     write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                 }
                             }else{ // We have a string to process
@@ -299,7 +313,6 @@ int main(){
                         default: printf("Unknown command. %s\n",command);
                     }
 
-                    
                     logOutput("centralecu.log", buffer);
                 }
                 
