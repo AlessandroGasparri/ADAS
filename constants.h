@@ -1,6 +1,7 @@
 #ifndef _CONSTANTS_H
 #define _CONSTANTS_H
 #define FRONT_CAMERA_CODE '0'
+#define BRAKE_BY_WIRE_CODE '1'
 
 static const int DEFAULT_PROTOCOL = 0;
 static const int HUMAN_INTERFACE_PORT = 1025;

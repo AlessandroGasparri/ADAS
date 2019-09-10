@@ -79,15 +79,6 @@ void createUDPSocket(int* serverFd, int port){
     bind(*serverFd, serverSockAddrPtr, serverLen);
 }
 
-void runThrottleControl(int fd, int* speed){
-   // printf("Throttle running, speed: %d\n",*speed);
-    char str[MAXLINE];
-    while(readLine(fd, str)){
-       // printf("Throttle: %s\n", str);
-    }
-    exit(0);
-}
-
 void sendToCenEcu(int fd, char str[MAXLINE]){
     struct sockaddr_in cen_ecu_addr;
     memset(&cen_ecu_addr, 0 , sizeof(cen_ecu_addr));
@@ -98,6 +89,62 @@ void sendToCenEcu(int fd, char str[MAXLINE]){
     sendto(fd, (const char *) str, strlen(str) + 1, MSG_CONFIRM,
         (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
 }
+
+char* substring(char *src, int from){
+
+    int len = 0, i = 0;
+    while(*(src + from + len) != '\0'){
+        len++;
+    }
+    len++;
+
+    
+    char *dest = (char*) malloc(sizeof(char) * (len + 1));
+    
+    for (i = from; i< (from + len); i++ ){
+        *dest = *(src + i);
+        dest ++;
+    }
+    dest -= len;
+    return dest;
+}
+
+void runThrottleControl(int fd){
+   char str[MAXLINE];
+    char ack[2];
+    int newSpeed;
+    int tc_sockFd;
+    strcpy(ack, "2"); 
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    tc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    while(1){
+        int n = 0;
+        n = read(fd, str, 1);
+        if(n > 0){
+            readLine(fd, str+1);
+            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
+            char *ptr = substring(str, 10); //strlen("INCREMENTO ") = 10
+            newSpeed = atoi(ptr);
+            while(newSpeed > 0){
+                newSpeed -= 5;
+                sendToCenEcu(tc_sockFd, ack);
+                sleep(1);
+            }
+        }
+        else{
+            //printf("NO ACTION\n");
+        }
+        sleep(1);
+    }
+    close(tc_sockFd);
+    exit(0);
+}
+
+
 
 void runFrontWindshieldCamera(){
 
@@ -145,26 +192,21 @@ void runBrakeByWire(int fd){
         n = read(fd, str, 1);
         if(n > 0){
             readLine(fd, str+1);
-            printf("leggo %s\n", str);
-            //printf("break by wire %d\n",n);
-            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
             char *ptr = strtok(str, "-");
             int i = 0;
             while(ptr != NULL){
                 speeds[i] = atoi(ptr);
-                //printf("%s\n",ptr);
                 ptr = strtok(NULL, "-");
                 i++;
             }
             while(speeds[0]>speeds[1]){
                 speeds[0] -= 5;
-                //printf("\ncurr: %d, toReach: %d\n",speeds[0], speeds[1]);
                 sendToCenEcu(bbw_sockFd, ack);
                 sleep(1);
             }
         }
         else{
-            printf("NO ACTION\n");
+            //printf("NO ACTION\n");
         }
         sleep(1);
     }
@@ -172,24 +214,7 @@ void runBrakeByWire(int fd){
     exit(0);
 }
 
-char* substring(char *src, int from){
 
-    int len = 0, i = 0;
-    while(*(src + from + len) != '\0'){
-        len++;
-    }
-    len++;
-
-    
-    char *dest = (char*) malloc(sizeof(char) * (len + 1));
-    
-    for (i = from; i< (from + len); i++ ){
-        *dest = *(src + i);
-        dest ++;
-    }
-    dest -= len;
-    return dest;
-}
 
 /*void handleSensorInput(char input[MAXLINE]){
     char code;
@@ -220,32 +245,6 @@ char* substring(char *src, int from){
 
 int main(){
 
-    /*int cen_ecu_Fd, hum_int_len, hum_int_Fd, hum_int_status;
-    struct sockaddr* hum_int_SockAddrPtr;
-    pid_t hum_int_pid;
-    createSocket(&cen_ecu_Fd, hum_int_SockAddrPtr, &hum_int_len, HUMAN_INTERFACE_PORT); //Genereting socket for human interface
-    hum_int_pid = fork();
-    if(hum_int_pid == 0 )
-    {
-        execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a focked process on a new terminal
-        exit(1);
-    }
-    else {
-        printf("waiting for the human interface...\n");
-        hum_int_Fd=accept(cen_ecu_Fd,hum_int_SockAddrPtr,&hum_int_len); //waiting the connection of the human interface generated
-        printf("human interface connected\n %d", hum_int_Fd);
-        char str[200];
-        while(readLine(hum_int_Fd, str) && strcmp(str,"FINE") != 0){
-            printf("%s\n", str);
-        }
-        waitpid(hum_int_pid, &hum_int_status, 0);
-
-        printf("\nFINE %d", hum_int_status);
-        close (hum_int_Fd); // Close the socket 
-        exit (0); // Terminate 
-
-
-    }*/
 
     int cen_ecu_sockUDPFd; //UDP socket descriptor Central ECU
     int hum_int_len; // NON USATO DA DEFINIRE
@@ -255,7 +254,7 @@ int main(){
     pid_t tc_pid; //PID throttle control process
     pid_t hum_int_pid; //PID for human interface
     pid_t bbw_pid; //PID for break by wire
-    int speed = 70; //Car speed
+    int speed = 30; //Car speed
     int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
     int newSpeed = speed;
     char buffer[MAXLINE]; //Buffer to store UDP messages
@@ -273,7 +272,7 @@ int main(){
     else if((tc_pid = fork()) == 0){
         printf("  trottol da %d\n", getpid());
         close(tc_sock_pair[0]); //I'm the child and i close father socket
-        runThrottleControl(tc_sock_pair[1], &speed); //funzione per controllare la velocita TODO
+        runThrottleControl(tc_sock_pair[1]); //funzione per controllare la velocita TODO
     }
     else if( (fwc_pid = fork()) == 0 ) {
         printf("  camera da %d\n", getpid());
@@ -312,26 +311,46 @@ int main(){
                             if(command[0] > '0' && command[0] < '9'){ //There is a number to process
                                 int readSpeed = atoi(command);
                                 /*
-                                    Command handled if speed is not being updating yet
+                                    Command handled if speed is not being updated yet
                                 */
-                                if(readSpeed < speed && !updatingSpeed){
-                                    updatingSpeed = 1;
-                                    newSpeed = readSpeed;
-                                    char stroutput[MAXLINE];
-                                    char valueBuffer[5];
-                                    sprintf(valueBuffer, "%d", speed);
-                                    strcpy(stroutput, valueBuffer);
-                                    strcat(stroutput, "-");
-                                    strcat(stroutput, command); //currentspeed-speed that we have to reach
-                                    strcat(stroutput, "\0");
-                                    write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                if(!updatingSpeed && readSpeed != speed){
+                                        updatingSpeed = 1;
+                                        newSpeed = readSpeed;
+                                        printf("updating speed from %d to %d\n", speed, newSpeed);
+                                        
+                                    if(readSpeed < speed ){
+                                        char stroutput[MAXLINE];
+                                        char valueBuffer[5];
+                                        sprintf(valueBuffer, "%d", speed);
+                                        strcpy(stroutput, valueBuffer);
+                                        strcat(stroutput, "-");
+                                        strcat(stroutput, command); //currentspeed-speed that we have to reach
+                                        strcat(stroutput, "\0");
+                                        write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                    }
+                                    else{
+                                        char stroutput[MAXLINE];
+                                        char valueBuffer[5];
+                                        sprintf(valueBuffer, "%d", newSpeed - speed);
+                                        strcpy(stroutput, "INCREMENTO ");
+                                        strcat(stroutput, valueBuffer); //currentspeed-speed that we have to reach
+                                        strcat(stroutput, "\0");
+                                        write(tc_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                    }
                                 }
                             }else{ // We have a string to process
                                 //printf(" %s", command);
                             }
                             break;
-                        case '1':
+                        case BRAKE_BY_WIRE_CODE:
                             speed -= 5;
+                            if(speed == newSpeed)
+                                updatingSpeed = 0;
+                            printf("Hack ricevuto nuova vel %d\n", speed);
+
+                            break;
+                        case '2':
+                            speed += 5;
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
                             printf("Hack ricevuto nuova vel %d\n", speed);
