@@ -112,6 +112,7 @@ void runFrontWindshieldCamera(){
 
     fc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
 
+
     while (fgets(line, sizeof(line), fptr)){
         //speedLimit = atoi(line);
         strcpy(output + 1, line);
@@ -129,13 +130,22 @@ void runFrontWindshieldCamera(){
 
 void runBrakeByWire(int fd){
     char str[MAXLINE];
+    char ack[2];
     int speeds[2];
+    int bbw_sockFd;
+    strcpy(ack, "1"); 
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    bbw_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+
     while(1){
         int n = 0;
         n = read(fd, str, 1);
-        printf("%d\n",n);
-        if(n != 0){
+        if(n > 0){
             readLine(fd, str+1);
+            //printf("break by wire %d\n",n);
             //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
             char *ptr = strtok(str, "-");
             int i = 0;
@@ -145,9 +155,11 @@ void runBrakeByWire(int fd){
                 ptr = strtok(NULL, "-");
                 i++;
             }
-            printf("\ncurr: %d, toReach: %d\n",speeds[0], speeds[1]);
-            if(speeds[0] != speeds[1]){//!= because the control on > already was performed before sending the message
-                printf("DECREMENTO 5\n");
+            while(speeds[0]>speeds[1]){
+                speeds[0] -= 5;
+                printf("\ncurr: %d, toReach: %d\n",speeds[0], speeds[1]);
+                sendToCenEcu(bbw_sockFd, ack);
+                sleep(1);
             }
         }
         else{
@@ -155,6 +167,7 @@ void runBrakeByWire(int fd){
         }
         sleep(1);
     }
+    close(bbw_sockFd);
     exit(0);
 }
 
@@ -241,7 +254,7 @@ int main(){
     pid_t tc_pid; //PID throttle control process
     pid_t hum_int_pid; //PID for human interface
     pid_t bbw_pid; //PID for break by wire
-    int speed = 0; //Car speed
+    int speed = 70; //Car speed
     char buffer[MAXLINE]; //Buffer to store UDP messages
     int started = 0; //Boolean variable to tell if process has received INIZIO
 
@@ -309,6 +322,11 @@ int main(){
                             }else{ // We have a string to process
                                 //printf(" %s", command);
                             }
+                            break;
+                        case '1':
+                            speed -= 5;
+                            printf("Hack ricevuto nuova vel %d\n", speed);
+
                             break;
                         default: printf("Unknown command. %s\n",command);
                     }
