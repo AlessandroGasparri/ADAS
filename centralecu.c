@@ -132,11 +132,12 @@ void runThrottleControl(int fd){
             while(newSpeed > 0){
                 newSpeed -= 5;
                 sendToCenEcu(tc_sockFd, ack);
+                logOutput("throttle.log", "AUMENTO 5");        
                 sleep(1);
             }
         }
         else{
-            //printf("NO ACTION\n");
+            logOutput("throttle.log", "NO ACTION");        
         }
         sleep(1);
     }
@@ -195,14 +196,29 @@ void runBrakeByWire(int fd){
             //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
             char *ptr = substring(str, 5); //strlen("FRENO ") = 5
             newSpeed = atoi(ptr);
-            while(newSpeed > 0){
-                newSpeed -= 5;
+            if(newSpeed > 0){
+                while(newSpeed > 0){
+                    n = read(fd, str, 1);
+                    if(n > 0){ // PERICOLO 
+                        strcpy(ack, "3");
+                        sendToCenEcu(bbw_sockFd, ack);
+                        logOutput("brake.log", "ARRESTO AUTO");
+                        break;
+                    }
+                    newSpeed -= 5;
+                    sendToCenEcu(bbw_sockFd, ack);
+                    logOutput("brake.log", "DECREMENTO 5");
+                    sleep(1);
+                }
+            }
+            else{ //PERICOLO
+                strcpy(ack, "3");
                 sendToCenEcu(bbw_sockFd, ack);
-                sleep(1);
+                logOutput("brake.log", "ARRESTO AUTO");
             }
         }
         else{
-            //printf("NO ACTION\n");
+            logOutput("brake.log", "NO ACTION");
         }
         sleep(1);
     }
@@ -250,7 +266,7 @@ int main(){
     pid_t tc_pid; //PID throttle control process
     pid_t hum_int_pid; //PID for human interface
     pid_t bbw_pid; //PID for break by wire
-    int speed = 30; //Car speed
+    int speed = 50; //Car speed
     int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
     int newSpeed = speed;
     char buffer[MAXLINE]; //Buffer to store UDP messages
@@ -302,6 +318,7 @@ int main(){
                     code = buffer[0];
                     char *command;
                     command = substring(buffer, 1);
+                    char stroutput[MAXLINE];
                     switch(code){
                         case FRONT_CAMERA_CODE:
                             if(command[0] > '0' && command[0] < '9'){ //There is a number to process
@@ -314,7 +331,7 @@ int main(){
                                         newSpeed = readSpeed;
                                         printf("updating speed from %d to %d\n", speed, newSpeed);
                                         
-                                        char stroutput[MAXLINE];
+                                        
                                         char valueBuffer[5];
 
                                     if(readSpeed < speed ){
@@ -333,23 +350,32 @@ int main(){
                                         write(tc_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                     }
                                 }
-                            }else{ // We have a string to process
-                                //printf(" %s", command);
+                            }else{ 
+                                printf("command %s\n", command);
+                                if(strcmp(command, "PERICOLO") == 0){
+                                    strcpy(stroutput, "FRENO -1");
+                                    write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                }
                             }
                             break;
                         case BRAKE_BY_WIRE_CODE:
                             speed -= 5;
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
-                            printf("Hack ricevuto nuova vel %d\n", speed);
+                            printf("ack ricevuto nuova vel %d\n", speed);
 
                             break;
-                        case '2':
+                        case THROTTLE_CONTROL_CODE:
                             speed += 5;
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
-                            printf("Hack ricevuto nuova vel %d\n", speed);
+                            printf("ack ricevuto nuova vel %d\n", speed);
 
+                            break;
+                        case HALT_CODE:
+                            speed = 0;
+                            started = 0;
+                            printf("HALT ricevuto nuova vel %d\n", speed);
                             break;
                         default: printf("Unknown command. %s\n",command);
                     }
