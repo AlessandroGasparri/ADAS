@@ -13,6 +13,9 @@
 #include <malloc.h>
 #include "constants.h"
 
+char randomFile[50];
+char urandomFile[50];
+
 //Generic functions that can be in a util file
 int readLine(int fd, char*str) {
     int n; 
@@ -276,7 +279,7 @@ void runParkAssist(int fd){
     int n = 0;
     pa_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
     FILE *fptr;
-    fptr = fopen("/dev/urandom", "r");
+    fptr = fopen(randomFile, "rb");
     struct timeval tv;
     tv.tv_sec = 0;
     tv.tv_usec = 100000;
@@ -286,11 +289,16 @@ void runParkAssist(int fd){
         printf("Sto parcheggiando\n");
         if(n < 0){
             char randomBytes[4];
-            fread(randomBytes, 1, 4, fptr); //Read 4 times 1 byte of data and puts in a byte array
+            fread(randomBytes, 4, 1, fptr); //Read 4 times 1 byte of data and puts in a byte array
+           /*for(int index = 0; index < 4; index++)
+                printf("0x%02x ",randomBytes[index]);*/
+            printf("\n");
             char toSend[6];
             toSend[0] = PARK_ASSIST_CODE; //Formatting toSend to conform to standard of a ECU message
-            for(int j = 1; j < 5; j++)
-                toSend[j] = randomBytes[j];
+            strcpy(toSend+1, randomBytes);
+            /*for(int index = 1; index < 5; index++)
+                printf("0x%02x ",toSend[index]);*/
+            printf("\n");
             toSend[5]= '\0';
             sendToCenEcu(pa_sockFd, toSend);
             i++;
@@ -305,196 +313,219 @@ void runParkAssist(int fd){
     exit(0);
 }
 
-int main(){
-    int cen_ecu_sockUDPFd; //UDP socket descriptor Central ECU
-    int hum_int_len; // NON USATO DA DEFINIRE
-    int hum_int_Fd; //NON USATO DA DEFINIRE
-    struct sockaddr* clientAddr;
-    int tc_sock_pair[2]; //TCP socket descriptors to communicate with throttle
-    int bbw_sock_pair[2]; //TCP socked descriptors to communicate with break by wire
-    int sbw_sock_pair[2]; //TCP socked descriptors to communicate with steer by wire
-    int pa_sock_pair[2]; //TCP socked descriptors to communicate with park asssit
-    pid_t fwc_pid; //PID front wide camera process
-    pid_t tc_pid; //PID throttle control process
-    pid_t hum_int_pid; //PID for human interface
-    pid_t bbw_pid; //PID for break by wire
-    pid_t sbw_pid; //PID for steer by wire
-    pid_t pa_pid; //PID for park assist
-    int speed = 50; //Car speed
-    int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
-    int steering = 0;
-    int newSpeed = speed;
-    char buffer[MAXLINE]; //Buffer to store UDP messages
-    int started = 1; //Boolean variable to tell if process has received INIZIO
-    int danger = 0;
-    int parking = 0;
-    int countParking = 0;
+int setUpFiles(char *mode){
+    if (mode == NULL) return 0;
+    if(strcmp(mode, "ARTIFICIALE") == 0){
+        strcpy(randomFile, "input/randomARTIFICIALE.binary");
+        strcpy(urandomFile, "input/urandomARTIFICIALE.binary");
+        return 1;
+    }
+    else if(strcmp(mode, "NORMALE") == 0){
+        strcpy(randomFile, "/dev/random");
+        strcpy(urandomFile, "/dev/urandom");
+        return 1;
+    }
+    return 0;
+}
 
-    createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
-    socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
-    socketpair(AF_UNIX, SOCK_STREAM, 0, bbw_sock_pair);
-    socketpair(AF_UNIX, SOCK_STREAM, 0, sbw_sock_pair);
+int main(int argc, char **argv){
+    if(!setUpFiles(argv[1])){
+        printf("Missing or wrong argument");
+        exit(1);
+    }
+    else {
+        int cen_ecu_sockUDPFd; //UDP socket descriptor Central ECU
+        int hum_int_len; // NON USATO DA DEFINIRE
+        int hum_int_Fd; //NON USATO DA DEFINIRE
+        struct sockaddr* clientAddr;
+        int tc_sock_pair[2]; //TCP socket descriptors to communicate with throttle
+        int bbw_sock_pair[2]; //TCP socked descriptors to communicate with break by wire
+        int sbw_sock_pair[2]; //TCP socked descriptors to communicate with steer by wire
+        int pa_sock_pair[2]; //TCP socked descriptors to communicate with park asssit
+        pid_t fwc_pid; //PID front wide camera process
+        pid_t tc_pid; //PID throttle control process
+        pid_t hum_int_pid; //PID for human interface
+        pid_t bbw_pid; //PID for break by wire
+        pid_t sbw_pid; //PID for steer by wire
+        pid_t pa_pid; //PID for park assist
+        int speed = 10; //Car speed
+        int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
+        int steering = 0;
+        int newSpeed = speed;
+        char buffer[MAXLINE]; //Buffer to store UDP messages
+        int started = 1; //Boolean variable to tell if process has received INIZIO
+        int danger = 0;
+        int parking = 0;
+        int countParking = 0;
+        char assistFlow[10]; //buffer for storing the park assist's messages
 
-    printf("Processo padre %d\n", getpid());
-    if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
-        execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
-        exit(0);
-    }
-    else if((tc_pid = fork()) == 0){
-        printf("  trottol da %d\n", getpid());
-        close(tc_sock_pair[0]); //I'm the child and i close father socket
-        runThrottleControl(tc_sock_pair[1]); //funzione per controllare la velocita TODO
-    }
-    else if((fwc_pid = fork()) == 0 ) {
-        printf("  camera da %d\n", getpid());
-        runFrontWindshieldCamera();
-    }
-    else if((bbw_pid = fork()) == 0){
-        printf("Break by wire %d\n", getpid());
-        close(bbw_sock_pair[0]); 
-        runBrakeByWire(bbw_sock_pair[1]);
-    }
-    else if((sbw_pid = fork()) == 0){
-        printf("Steer by wire %d\n", getpid());
-        close(sbw_sock_pair[0]);
-        runSteerByWire(sbw_sock_pair[1]);
-    }
-    else {//In this else i'm the father
-        close(tc_sock_pair[1]); //I'm the father and i close child socket
-        close(bbw_sock_pair[1]);
-        close(sbw_sock_pair[1]);
-        do{
-            int n, len;
-            n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
-            /*printf("%s\n", buffer);
-            int bufferlenght = strlen(buffer);
-            printf("Lunghezza buffer: %d\n", bufferlenght);*/
-            if(!started){
-                if(strcmp(buffer,"INIZIO") == 0){
-                    started = 1;
-                    danger = 0;
+        createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
+        socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
+        socketpair(AF_UNIX, SOCK_STREAM, 0, bbw_sock_pair);
+        socketpair(AF_UNIX, SOCK_STREAM, 0, sbw_sock_pair);
+
+        printf("Processo padre %d\n", getpid());
+        if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
+            execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
+            exit(0);
+        }
+        else if((tc_pid = fork()) == 0){
+            printf("  trottol da %d\n", getpid());
+            close(tc_sock_pair[0]); //I'm the child and i close father socket
+            runThrottleControl(tc_sock_pair[1]); //funzione per controllare la velocita TODO
+        }
+        else if((fwc_pid = fork()) == 0 ) {
+            printf("  camera da %d\n", getpid());
+            runFrontWindshieldCamera();
+        }
+        else if((bbw_pid = fork()) == 0){
+            printf("Break by wire %d\n", getpid());
+            close(bbw_sock_pair[0]); 
+            runBrakeByWire(bbw_sock_pair[1]);
+        }
+        else if((sbw_pid = fork()) == 0){
+            printf("Steer by wire %d\n", getpid());
+            close(sbw_sock_pair[0]);
+            runSteerByWire(sbw_sock_pair[1]);
+        }
+        else {//In this else i'm the father
+            close(tc_sock_pair[1]); //I'm the father and i close child socket
+            close(bbw_sock_pair[1]);
+            close(sbw_sock_pair[1]);
+            do{
+                int n, len;
+                n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
+                /*printf("%s\n", buffer);
+                int bufferlenght = strlen(buffer);
+                printf("Lunghezza buffer: %d\n", bufferlenght);*/
+                if(!started){
+                    if(strcmp(buffer,"INIZIO") == 0){
+                        started = 1;
+                        danger = 0;
+                    }
                 }
-            }
-            else if(strcmp(buffer, "PARCHEGGIO") == 0 && started){
-                char stroutput[MAXLINE];
-                char tmp[10];
-                parking = 1;
-                strcpy(stroutput, "FRENO ");
-                sprintf(tmp, "%d", speed);
-                strcat(stroutput, tmp);
-                write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
-            }
-            else if(strcmp(buffer,"FINE") != 0){
-                char code;
-                code = buffer[0];
-                char *command;
-                command = substring(buffer, 1);
-                char stroutput[MAXLINE];
-                switch(code){
-                    case FRONT_CAMERA_CODE:
-                        if(command[0] > '0' && command[0] < '9' ){ //There is a number to process
-                            int readSpeed = atoi(command);
-                            /*
-                                Command handled if speed is not being updated yet
-                            */
-                            if(!updatingSpeed && !parking && readSpeed != speed){
-                                    updatingSpeed = 1;
-                                    newSpeed = readSpeed;
-                                    //printf("updating speed from %d to %d\n", speed, newSpeed);
-                                    char valueBuffer[5];
+                else if(strcmp(buffer, "PARCHEGGIO") == 0 && started){
+                    char stroutput[MAXLINE];
+                    char tmp[10];
+                    parking = 1;
+                    strcpy(stroutput, "FRENO ");
+                    sprintf(tmp, "%d", speed);
+                    strcat(stroutput, tmp);
+                    write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                }
+                else if(strcmp(buffer,"FINE") != 0){
+                    char code;
+                    code = buffer[0];
+                    char *command;
+                    command = substring(buffer, 1);
+                    char stroutput[MAXLINE];
+                    switch(code){
+                        case FRONT_CAMERA_CODE:
+                            if(command[0] > '0' && command[0] < '9' ){ //There is a number to process
+                                int readSpeed = atoi(command);
+                                /*
+                                    Command handled if speed is not being updated yet
+                                */
+                                if(!updatingSpeed && !parking && readSpeed != speed){
+                                        updatingSpeed = 1;
+                                        newSpeed = readSpeed;
+                                        //printf("updating speed from %d to %d\n", speed, newSpeed);
+                                        char valueBuffer[5];
 
-                                if(readSpeed < speed ){
-                                    sprintf(valueBuffer, "%d", speed - newSpeed);
-                                    strcpy(stroutput, "FRENO ");
-                                    strcat(stroutput, valueBuffer); //currentspeed-speed that we have to reach
-                                    strcat(stroutput, "\0");
+                                    if(readSpeed < speed ){
+                                        sprintf(valueBuffer, "%d", speed - newSpeed);
+                                        strcpy(stroutput, "FRENO ");
+                                        strcat(stroutput, valueBuffer); //currentspeed-speed that we have to reach
+                                        strcat(stroutput, "\0");
+                                        write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                    }
+                                    else{
+
+                                        sprintf(valueBuffer, "%d", newSpeed - speed);
+                                        strcpy(stroutput, "INCREMENTO ");
+                                        strcat(stroutput, valueBuffer); //currentspeed-speed that we have to reach
+                                        strcat(stroutput, "\0");
+                                        write(tc_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                    }
+                                }
+                            }
+                            else{
+                                printf("command %s\n", command);
+                                if(strcmp(command, "PERICOLO") == 0){
+                                    danger = 1;
+                                    strcpy(stroutput, "FRENO -1");
                                     write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                 }
-                                else{
-
-                                    sprintf(valueBuffer, "%d", newSpeed - speed);
-                                    strcpy(stroutput, "INCREMENTO ");
-                                    strcat(stroutput, valueBuffer); //currentspeed-speed that we have to reach
-                                    strcat(stroutput, "\0");
-                                    write(tc_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                else if(!steering && !parking && (strcmp(command, "DESTRA") == 0 || strcmp(command, "SINISTRA") == 0)){
+                                    steering = 1;
+                                    strcpy(stroutput, command);
+                                    write(sbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                 }
                             }
-                        }
-                        else{
-                            printf("command %s\n", command);
-                            if(strcmp(command, "PERICOLO") == 0){
-                                danger = 1;
-                                strcpy(stroutput, "FRENO -1");
-                                write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
-                            }
-                            else if(!steering && !parking && (strcmp(command, "DESTRA") == 0 || strcmp(command, "SINISTRA") == 0)){
-                                steering = 1;
-                                strcpy(stroutput, command);
-                                write(sbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
-                            }
-                        }
-                        logOutput("camera.log", command);
-                        break;
-                    case BRAKE_BY_WIRE_CODE:
-                            speed -= 5;
+                            logOutput("camera.log", command);
+                            break;
+                        case BRAKE_BY_WIRE_CODE:
+                                speed -= 5;
+                                if(speed == newSpeed)
+                                    updatingSpeed = 0;
+                                if(speed == 0 && parking){
+                                    socketpair(AF_UNIX, SOCK_STREAM, 0, pa_sock_pair);
+                                    if((pa_pid = fork()) == 0){
+                                        printf("Park assist %d\n", getpid());
+                                        close(pa_sock_pair[0]);
+                                        runParkAssist(pa_sock_pair[1]);
+                                    }else{
+                                        close(pa_sock_pair[1]);
+                                    }
+                                }
+                                printf("ack ricevuto nuova vel %d\n", speed);
+                                break;
+                        case THROTTLE_CONTROL_CODE:
+                            speed += 5;
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
-                            if(speed == 0 && parking){
-                                socketpair(AF_UNIX, SOCK_STREAM, 0, pa_sock_pair);
-                                if((pa_pid = fork()) == 0){
-                                    printf("Park assist %d\n", getpid());
-                                    close(pa_sock_pair[0]);
-                                    runParkAssist(pa_sock_pair[1]);
-                                }else{
-                                    close(pa_sock_pair[1]);
-                                }
-                            }
-                            printf("ack ricevuto nuova vel %d\n", speed);
+                            printf("ack ricevuto throttle nuova vel %d\n", speed);
                             break;
-                    case THROTTLE_CONTROL_CODE:
-                        speed += 5;
-                        if(speed == newSpeed)
-                            updatingSpeed = 0;
-                        printf("ack ricevuto throttle nuova vel %d\n", speed);
-                        break;
-                    case HALT_CODE:
-                        speed = 0;
-                        started = 0;
-                        printf("HALT ricevuto nuova vel %d\n", speed);
-                        break;
-                    case STEER_BY_WIRE_CODE:
-                        steering = 0;
-                        printf("Ack ricevuto steer fine sterzata\n");
-                        break;
-                    case PARK_ASSIST_CODE:
-                            logOutput("assist.log", command);
-                            countParking++;
-                            int i = 0;
-                            while(0){ //TODO
-
-                            }
-                            if(countParking == PARKING_TIME){
-                                printf("parcheggio finito\n");
-                                kill(pa_pid, SIGKILL);
-                                started = 0;
-                                parking = 0;
-                                countParking = 0;
-                            }
-                        break;
-                    default: printf("Unknown command. %s\n",command);
+                        case HALT_CODE:
+                            speed = 0;
+                            started = 0;
+                            printf("HALT ricevuto nuova vel %d\n", speed);
+                            break;
+                        case STEER_BY_WIRE_CODE:
+                            steering = 0;
+                            printf("Ack ricevuto steer fine sterzata\n");
+                            break;
+                        case PARK_ASSIST_CODE:
+                                logOutput("assist.log", command);
+                                countParking++;
+                                int i = 0;
+                                for(int index = 0; index < 4; index ++){
+                                    printf("command 0x%02x ", command[index]);
+                                }
+                                printf("\n");
+                                if(countParking == PARKING_TIME){
+                                    printf("parcheggio finito\n");
+                                    kill(pa_pid, SIGKILL);
+                                    started = 0;
+                                    parking = 0;
+                                    countParking = 0;
+                                }
+                            break;
+                        default: printf("Unknown command. %s\n",command);
+                    }
+                    logOutput("ECU.log", stroutput);
                 }
-                logOutput("ECU.log", stroutput);
-            }
-        }while(strcmp(buffer,"FINE") != 0);
+            }while(strcmp(buffer,"FINE") != 0);
+        }
+        close(cen_ecu_sockUDPFd);
+        kill(fwc_pid, SIGKILL);
+        kill(tc_pid, SIGKILL);
+        kill(bbw_pid, SIGKILL);
+        kill(sbw_pid, SIGKILL);
+        printf("FINE\n");
+        exit(0);
+        return 0;
     }
-    close(cen_ecu_sockUDPFd);
-    kill(fwc_pid, SIGKILL);
-    kill(tc_pid, SIGKILL);
-    kill(bbw_pid, SIGKILL);
-    kill(sbw_pid, SIGKILL);
-    printf("FINE\n");
-    exit(0);
-    return 0;
 }
 
 
