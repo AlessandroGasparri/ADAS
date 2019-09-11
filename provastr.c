@@ -12,25 +12,14 @@
 #include <netinet/in.h> /* For AFINET sockets */
 #include <malloc.h>
 
-char* substring(char *src, int from){
-    
-    int len = 0, i = 0;
-    while(*(src + from + len) != '\0'){
-        len++;
-    }
-    
-    char *dest = (char*) malloc(sizeof(char) * (len + 1));
-    
-    for (i = from; i< (from + len); i++ ){
-        *dest = *(src + i);
-        dest ++;
-    }
-    dest -= len;
-    return dest;
-
-}
-
 
 void main(){
-	printf("%s", substring("ciao", 1));
+    FILE *fptr;
+    fptr = fopen("/dev/urandom", "r");
+    
+    char randomBytes[4];
+    fread(randomBytes, 1, 4, fptr);
+    
+    fclose(fptr);
+    exit(0);
 }
