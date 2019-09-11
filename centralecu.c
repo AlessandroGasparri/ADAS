@@ -150,8 +150,7 @@ void runBrakeByWire(int fd){
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
     bbw_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
     while(1){
-        
-            printf("faccio qualcosa e sono bbw");
+        printf("faccio qualcosa e sono bbw");
         int n = 0;
         n = read(fd, str, 1);
         if(n > 0){
@@ -165,6 +164,7 @@ void runBrakeByWire(int fd){
                         ack[0] = HALT_CODE;
                         ack[1] = '\0';
                         sendToCenEcu(bbw_sockFd, ack);
+                        printf("Entro qui");
                         logOutput("brake.log", "ARRESTO AUTO");
                         break;
                     }
@@ -360,6 +360,7 @@ int main(){
     else {//In this else i'm the father
         close(tc_sock_pair[1]); //I'm the father and i close child socket
         close(bbw_sock_pair[1]);
+        close(sbw_sock_pair[1]);
         do{
             int n, len;
             n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
@@ -438,12 +439,14 @@ int main(){
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
                             if(speed == 0){
+                                socketpair(AF_UNIX, SOCK_STREAM, 0, pa_sock_pair); //TODO va bene fatto qui ?
                                 if((sbw_pid = fork()) == 0){
-                                    socketpair(AF_UNIX, SOCK_STREAM, 0, pa_sock_pair); //TODO va bene fatto qui ?
                                     parking = 1;
                                     printf("Park assist %d\n", getpid());
                                     close(pa_sock_pair[0]);
                                     runParkAssist(pa_sock_pair[1]);
+                                }else{
+                                    close(pa_sock_pair[1]);
                                 }
                             }
                             printf("ack ricevuto nuova vel %d\n", speed);
