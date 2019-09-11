@@ -469,7 +469,10 @@ int main(){
                     case PARK_ASSIST_CODE:
                             logOutput("assist.log", command);
                             countParking++;
-                            //Qui bisogna leggere i dati dagli altri sensori e vedere se vanno bene e vedere se il
+                            int i = 0;
+                            while(0){ //TODO
+
+                            }
                             if(countParking == PARKING_TIME){
                                 printf("parcheggio finito\n");
                                 kill(pa_pid, SIGKILL);

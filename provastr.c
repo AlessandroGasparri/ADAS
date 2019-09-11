@@ -15,11 +15,16 @@
 
 void main(){
     FILE *fptr;
-    fptr = fopen("/dev/urandom", "r");
+    fptr = fopen("/dev/random", "r");
     
-    char randomBytes[4];
-    fread(randomBytes, 1, 4, fptr);
-    
+    for(int j = 0; j< 10; j++){
+        char randomBytes[4];
+        fread(randomBytes, 1, 4, fptr);
+        for(int i = 0; i < 4; ++i){
+            printf("sring: %s\n", randomBytes);
+            //printf("Integer: %d\n", randomBytes[i]);
+        }
+    }
     fclose(fptr);
     exit(0);
 }
