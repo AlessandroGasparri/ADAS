@@ -499,8 +499,11 @@ int main(int argc, char **argv){
                                 logOutput("assist.log", command);
                                 countParking++;
                                 int i = 0;
+                                printf("command ");
                                 for(int index = 0; index < 4; index ++){
-                                    printf("command 0x%02x ", command[index]);
+                                    char str[10];
+                                    sprintf(str, "%02x", command[index]);
+                                    printf("str %s ", str); //continuare qui
                                 }
                                 printf("\n");
                                 if(countParking == PARKING_TIME){
