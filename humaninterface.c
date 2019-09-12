@@ -1,8 +1,17 @@
 #include <stdio.h>
 #include <signal.h>
+#include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <signal.h>
 #include <netinet/in.h> /* For AF_INET sockets */
 #define DEFAULT_PROTOCOL 0
 #define HUMAN_INTERFACE_PORT 1025
@@ -47,8 +56,6 @@ int main (void) {
 
 
 	char str[100];
-
-
 	printf("*****************************************************\n");
 	printf("*****************HUMAN INTERFACE INPUT***************\n");
 	printf("*****************************************************\n\n\n");	
@@ -56,7 +63,7 @@ int main (void) {
 	if( output_pid != 0){
 		do {
 			printf("Inserisci un comando: ");
-			scanf("%s", &str);
+			scanf("%s", str);
 			sendto(hum_int_sockFd, (const char *) str, strlen(str) + 1, MSG_CONFIRM,
     		(const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
 		}while( strcmp(str,"FINE") != 0 );
@@ -66,7 +73,7 @@ int main (void) {
 		exit ( 0); // Done 
 	}
 	else {
-		execl("/usr/bin/gnome-terminal","gnome-terminal", "-qe","tail -f  ./ECU.log",0);
+		execl("/usr/bin/xterm","xterm", "-e","tail -f  ./ECU.log",(char *)0);
 	} 
 
     

@@ -1,45 +1,43 @@
-#define _XOPEN_SOURCE 700
-#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <signal.h>
-#include <stdbool.h> /* false */
-#include <stdio.h> /* perror */
-#include <stdlib.h> /* EXIT_SUCCESS, EXIT_FAILURE */
-#include <sys/wait.h> /* wait, sleep */
-#include <unistd.h> /* fork, write */
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h> /* For AFINET sockets */
+#include <malloc.h>
+#include <time.h>
+#include <fcntl.h>
+#include "constants.h"
 
-void signal_handler(int sig) {
-    char s1[] = "SIGUSR1\n";
-    char s2[] = "SIGUSR2\n";
-    if (sig == SIGUSR1) {
-        write(STDOUT_FILENO, s1, sizeof(s1));
-    } else if (sig == SIGUSR2) {
-        write(STDOUT_FILENO, s2, sizeof(s2));
+
+void runForwardFacingRadar(){
+    int fd;
+    fd = open("/dev/random", O_RDONLY);
+    size_t randomDataLen = 0;
+    while (1){
+        char randomBytes[24];
+        randomBytes[0] = 'A';
+        ssize_t result = read(fd, randomBytes+1, 23);
+        printf("SIZE %d\n", sizeof randomBytes);
+        //if (result < 24){
+            //Ho letto meno di 24 byte in teoria
+            printf("%ld\n", result);
+            for(int i = 0; i < result; i++){
+                printf("%d ",randomBytes[i]);
+            }
+            printf("\n");
+        //}
+        sleep(2);
     }
-    signal(sig, signal_handler);
+    close(fd);
 }
 
 int main() {
-    pid_t pid;
-
-    signal(SIGUSR1, signal_handler);
-    signal(SIGUSR2, signal_handler);
-    pid = fork();
-    if (pid == -1) {
-        perror("fork");
-        assert(false);
-    } else {
-        if (pid == 0) {
-            while (1);
-            exit(EXIT_SUCCESS);
-            }
-        while (1) {
-        	printf("invio segnalini");
-            kill(pid, SIGUSR1);
-            sleep(1);
-        	printf("invio segnalini");
-            kill(pid, SIGUSR2);
-            sleep(1);
-        }
-    }
-    return EXIT_SUCCESS;
+    runForwardFacingRadar();
 }

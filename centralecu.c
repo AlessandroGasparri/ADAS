@@ -12,6 +12,7 @@
 #include <netinet/in.h> /* For AFINET sockets */
 #include <malloc.h>
 #include <time.h>
+#include <fcntl.h>
 #include "constants.h"
 
 char randomFile[50];
@@ -28,15 +29,36 @@ int readLine(int fd, char*str) {
     return (n>0);
 }
 
-void logOutput(char path[100], char str[MAXLINE]){
+void logOutput(char path[100], char str[MAXLINE], int binary){
     FILE *fptr;
-
-    fptr = fopen(path, "a");
+    if(!binary)
+        fptr = fopen(path, "a");
+    else{
+        fptr = fopen(path, "wb");
+        printf("Binario");
+    }
     if(fptr == NULL){
         printf("File not found\n");
     }
     else{
-        fputs(str, fptr);
+        if(binary){
+            //fwrite(str, strlen(str), 1,fptr);TODO Da vedere
+            printf("Lunghezza: %d\n", strlen(str));
+            for(int i = 0; i < strlen(str); i++){
+                char hex[20];
+                sprintf(hex,"%02x",str[i]);
+                if(strlen(hex)>2){
+                    hex[0] = hex[strlen(hex)-2];
+                    hex[1] = hex[strlen(hex)-1];
+                    hex[2] = '\0';
+                }
+                fputs(hex, fptr);
+                fputs(" ", fptr);
+            }
+        }
+        else{
+            fputs(str, fptr);
+        }
         fputs("\n", fptr);
         fclose(fptr);
     }
@@ -89,9 +111,10 @@ int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
 }
 
 void sig_handler(int sig){
-
-    if(sig == SIGUSR1)
+    if(sig == SIGUSR1){
         updatingSpeed = 0;
+        //TODO kill everuthing e send to human interface output messaggio terminazione
+    }
     else if(sig == SIGUSR2){
         char s2[] = "SIGUSR2\n";
         write(STDOUT_FILENO, s2, sizeof(s2));
@@ -214,7 +237,7 @@ void runBrakeByWire(int fd){
                 ack[0] = BRAKE_BY_WIRE_CODE;
                 ack[1] = '\0';
                 sendToCenEcu(bbw_sockFd, ack);
-                logOutput("brake.log", "DECREMENTO 5");
+                logOutput("brake.log", "DECREMENTO 5", 0);
                 sleep(1);
             }
             if(dangerDetected){
@@ -222,7 +245,7 @@ void runBrakeByWire(int fd){
                 ack[0] = HALT_CODE;
                 ack[1] = '\0';
                 sendToCenEcu(bbw_sockFd, ack);
-                logOutput("brake.log", "ARRESTO AUTO");
+                logOutput("brake.log", "ARRESTO AUTO", 0);
                 dangerDetected = 0;
             }
         }
@@ -231,20 +254,17 @@ void runBrakeByWire(int fd){
                 ack[0] = HALT_CODE;
                 ack[1] = '\0';
                 sendToCenEcu(bbw_sockFd, ack);
-                logOutput("brake.log", "ARRESTO AUTO");
+                logOutput("brake.log", "ARRESTO AUTO", 0);
                 dangerDetected = 0;
         }
         else{
-            logOutput("brake.log", "NO ACTION");
+            logOutput("brake.log", "NO ACTION", 0);
         }
         sleep(1);
     }
     close(bbw_sockFd);//TODO qui non ci arriva mai credo
     exit(0);
 }
-
-
-
 
 void runThrottleControl(int fd){
     char str[MAXLINE];
@@ -273,7 +293,7 @@ void runThrottleControl(int fd){
                 if(randomNumber != 50000){
                     newSpeed -= 5;
                     sendToCenEcu(tc_sockFd, ack);
-                    logOutput("throttle.log", "AUMENTO 5");        
+                    logOutput("throttle.log", "AUMENTO 5", 0);        
                     sleep(1);
                 }
                 else {
@@ -281,13 +301,13 @@ void runThrottleControl(int fd){
 
                     printf("invio a %d\n", getppid());
                     kill(getppid(), SIGUSR1);
-                    logOutput("throttle.log", "ACCELERAZIONE FALLITA");  
+                    logOutput("throttle.log", "ACCELERAZIONE FALLITA", 0);  
                     break; 
                 }
             }
         }
         else{
-            logOutput("throttle.log", "NO ACTION");        
+            logOutput("throttle.log", "NO ACTION", 0);        
         }
         sleep(1);
     }
@@ -318,14 +338,14 @@ void runSteerByWire(int fd){
             strcat(toWrite, str);
             int i;
             for(i = 0; i < 4; i++){
-                logOutput("steer.log", toWrite);
+                logOutput("steer.log", toWrite, 0);
                 printf("%s\n", toWrite);
                 sleep(1);
             }
             sendToCenEcu(sbw_sockFd, ack);
         }
         else{
-            logOutput("steer.log", "NO ACTION");        
+            logOutput("steer.log", "NO ACTION", 0);        
         }
         sleep(1);
     }
@@ -366,7 +386,23 @@ void runParkAssist(int fd){
     exit(0);
 }
 
-
+void runForwardFacingRadar(){
+    int ffr_sockFd;
+    FILE *fptr;
+    ffr_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+    fptr = fopen(randomFile, "rb");
+    size_t randomDataLen = 0;
+    while (1){
+        char randomBytes[NUM_FORWARD_FACING_RADAR_BYTES+2];
+        randomBytes[NUM_FORWARD_FACING_RADAR_BYTES+1] = '\0';
+        randomBytes[0] = FORWARD_FACING_RADAR_CODE;
+        ssize_t result = fread(randomBytes+1, 1, NUM_FORWARD_FACING_RADAR_BYTES, fptr);
+        if (result == NUM_FORWARD_FACING_RADAR_BYTES){
+            sendToCenEcu(ffr_sockFd, randomBytes);
+        }
+        sleep(2);
+    }
+}
 
 int main(int argc, char **argv){
     if(!setUpFiles(argv[1])){
@@ -388,6 +424,7 @@ int main(int argc, char **argv){
         pid_t bbw_pid; //PID for break by wire
         pid_t sbw_pid; //PID for steer by wire
         pid_t pa_pid; //PID for park assist
+        pid_t ffr_pid; //PID for forward facing radar
         int speed = 50; //Car speed
         int steering = 0;
         int newSpeed = speed;
@@ -432,6 +469,10 @@ int main(int argc, char **argv){
             printf("Steer by wire %d\n", getpid());
             close(sbw_sock_pair[0]);
             runSteerByWire(sbw_sock_pair[1]);
+        }
+        else if((ffr_pid = fork()) == 0){
+            printf("Forward facing radar %d\n", getpid());
+            runForwardFacingRadar();
         }
         else {//In this else i'm the father
             close(tc_sock_pair[1]); //I'm the father and i close child socket
@@ -490,7 +531,7 @@ int main(int argc, char **argv){
                                         strcat(stroutput, "\0");
                                         write(tc_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                     }
-                                    logOutput("ECU.log", stroutput);
+                                    logOutput("ECU.log", stroutput, 0);
                                 }
                             }
                             else{
@@ -498,17 +539,17 @@ int main(int argc, char **argv){
                                 if(strcmp(command, "PERICOLO") == 0){
                                     danger = 1;
                                     strcpy(stroutput, "PERICOLO - ARRESTO AUTO");
-                                    logOutput("ECU.log", stroutput);
+                                    logOutput("ECU.log", stroutput, 0);
                                     kill(bbw_pid, SIGUSR2);
                                 }
                                 else if(!steering && !parking && (strcmp(command, "DESTRA") == 0 || strcmp(command, "SINISTRA") == 0)){
                                     steering = 1;
                                     strcpy(stroutput, command);
                                     write(sbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
-                                    logOutput("ECU.log", stroutput);
+                                    logOutput("ECU.log", stroutput, 0);
                                 }
                             }
-                            logOutput("camera.log", command);
+                            logOutput("camera.log", command, 0);
                             break;
                         case BRAKE_BY_WIRE_CODE:
                                 speed -= 5;
@@ -516,7 +557,7 @@ int main(int argc, char **argv){
                                     updatingSpeed = 0;
                                 if(speed == 0 && parking){
                                     strcpy(stroutput, "PARCHEGGIO");
-                                    logOutput("ECU.log", stroutput);
+                                    logOutput("ECU.log", stroutput,0);
                                     socketpair(AF_UNIX, SOCK_STREAM, 0, pa_sock_pair);
                                     if((pa_pid = fork()) == 0){
                                         printf("Park assist %d\n", getpid());
@@ -526,7 +567,7 @@ int main(int argc, char **argv){
                                         close(pa_sock_pair[1]);
                                     }
                                 }
-                                printf("ack ricevuto nuova vel %d\n", speed);
+                                //printf("ack ricevuto nuova vel %d\n", speed);
                                 break;
                         case THROTTLE_CONTROL_CODE:
                             speed += 5;
@@ -537,14 +578,14 @@ int main(int argc, char **argv){
                         case HALT_CODE:
                             speed = 0;
                             started = 0;
-                            printf("HALT ricevuto nuova vel %d\n", speed);
+                            //printf("HALT ricevuto nuova vel %d\n", speed);
                             break;
                         case STEER_BY_WIRE_CODE:
                             steering = 0;
                             //printf("Ack ricevuto steer fine sterzata\n");
                             break;
                         case PARK_ASSIST_CODE:
-                                logOutput("assist.log", command);
+                                logOutput("assist.log", command, 1);
                                 countParking++;
                                 for(int i = 0; i < NUM_PARKING_BYTES; i++){
                                     parkBuffer[i+2] = command[i];
@@ -562,6 +603,9 @@ int main(int argc, char **argv){
                                     countParking = 0;
                                 }
                             break;
+                        case FORWARD_FACING_RADAR_CODE:
+                            logOutput("radar.log", command, 1);
+                            break;
                         default: printf("Unknown command. %s\n",command);
                     }
                 }
@@ -573,6 +617,7 @@ int main(int argc, char **argv){
         kill(tc_pid, SIGKILL);
         kill(bbw_pid, SIGKILL);
         kill(sbw_pid, SIGKILL);
+        kill(ffr_pid, SIGKILL);
         printf("FINE\n");
         exit(0);
         return 0;
