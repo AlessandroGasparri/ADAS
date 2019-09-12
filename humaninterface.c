@@ -48,7 +48,7 @@ int main (void) {
 
 	char str[100];
 
-	
+
 	printf("*****************************************************\n");
 	printf("*****************HUMAN INTERFACE INPUT***************\n");
 	printf("*****************************************************\n\n\n");	
@@ -66,7 +66,7 @@ int main (void) {
 		exit ( 0); // Done 
 	}
 	else {
-		execl("/usr/bin/xterm","xterm", "-e","tail -f  ./ECU.log",0);
+		execl("/usr/bin/gnome-terminal","gnome-terminal", "-qe","tail -f  ./ECU.log",0);
 	} 
 
     
