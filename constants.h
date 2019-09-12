@@ -6,7 +6,9 @@
 #define HALT_CODE '3'
 #define STEER_BY_WIRE_CODE '4'
 #define PARK_ASSIST_CODE '5'
-#define PARKING_TIME 10 //Used for debug
+#define PARKING_TIME 100 //Used for debug
+#define NUM_PARKING_BYTES 4
+#define NUM_PARKING_VALUES 10
 #define DEFAULT_PROTOCOL 0
 #define HUMAN_INTERFACE_PORT 1025
 #define UDP_CENECU_PORT 1026

@@ -58,6 +58,33 @@ char* substring(char *src, int from){
     return dest;
 }
 
+int setUpFiles(char *mode){
+    if (mode == NULL) return 0;
+    if(strcmp(mode, "ARTIFICIALE") == 0){
+        strcpy(randomFile, "input/randomARTIFICIALE.binary");
+        strcpy(urandomFile, "input/urandomARTIFICIALE.binary");
+        return 1;
+    }
+    else if(strcmp(mode, "NORMALE") == 0){
+        strcpy(randomFile, "/dev/random");
+        strcpy(urandomFile, "/dev/urandom");
+        return 1;
+    }
+    return 0;
+}
+
+int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
+    //0x 17 2A , ii) 0xD693, iiI) 0xBDD8, iv) 0xFAEE, v) 0x4300
+    for(int i = 0; i < lenght-1; i++){
+        for(int j = 0; j < nValues-1; j+=2){
+            if(toSearchIn[i] == values[j] && toSearchIn[i+1] == values[j+1]){
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 //Socket and communication functions
 void createSocket(int* serverFd, struct sockaddr* clientSockAddrPtr, int* clientLen, int port){
     int serverLen;
@@ -279,32 +306,24 @@ void runParkAssist(int fd){
     int n = 0;
     pa_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
     FILE *fptr;
-    fptr = fopen(randomFile, "rb");
+    fptr = fopen(urandomFile, "rb");
     struct timeval tv;
     tv.tv_sec = 0;
     tv.tv_usec = 100000;
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);//non bloccante
     while(i < PARKING_TIME){ //Do it for 30 seconds
         n = read(fd, str, 1);
-        printf("Sto parcheggiando\n");
         if(n < 0){
-            char randomBytes[4];
-            fread(randomBytes, 4, 1, fptr); //Read 4 times 1 byte of data and puts in a byte array
-           /*for(int index = 0; index < 4; index++)
-                printf("0x%02x ",randomBytes[index]);*/
-            printf("\n");
+            char randomBytes[NUM_PARKING_BYTES];
+            fread(randomBytes, NUM_PARKING_BYTES, 1, fptr); //Read 4 times 1 byte of data and puts in a byte array
             char toSend[6];
             toSend[0] = PARK_ASSIST_CODE; //Formatting toSend to conform to standard of a ECU message
             strcpy(toSend+1, randomBytes);
-            /*for(int index = 1; index < 5; index++)
-                printf("0x%02x ",toSend[index]);*/
-            printf("\n");
             toSend[5]= '\0';
             sendToCenEcu(pa_sockFd, toSend);
             i++;
         }
         else{
-            printf("Restarting");
             i = 0; //Restart parking procedure
         }
         sleep(1);
@@ -313,24 +332,10 @@ void runParkAssist(int fd){
     exit(0);
 }
 
-int setUpFiles(char *mode){
-    if (mode == NULL) return 0;
-    if(strcmp(mode, "ARTIFICIALE") == 0){
-        strcpy(randomFile, "input/randomARTIFICIALE.binary");
-        strcpy(urandomFile, "input/urandomARTIFICIALE.binary");
-        return 1;
-    }
-    else if(strcmp(mode, "NORMALE") == 0){
-        strcpy(randomFile, "/dev/random");
-        strcpy(urandomFile, "/dev/urandom");
-        return 1;
-    }
-    return 0;
-}
 
 int main(int argc, char **argv){
     if(!setUpFiles(argv[1])){
-        printf("Missing or wrong argument");
+        printf("Missing or wrong argument\n");
         exit(1);
     }
     else {
@@ -357,7 +362,8 @@ int main(int argc, char **argv){
         int danger = 0;
         int parking = 0;
         int countParking = 0;
-        char assistFlow[10]; //buffer for storing the park assist's messages
+        char parkingFailValues[NUM_PARKING_VALUES] = {0x17, 0x2A, 0xD6, 0x93, 0xBD, 0xD8, 0xFA, 0xEE, 0x43, 0x00};
+        char parkBuffer[NUM_PARKING_BYTES+2]={0, 0, 0, 0, 0, 0};
 
         createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
         socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
@@ -478,36 +484,36 @@ int main(int argc, char **argv){
                                         close(pa_sock_pair[1]);
                                     }
                                 }
-                                printf("ack ricevuto nuova vel %d\n", speed);
+                                //printf("ack ricevuto nuova vel %d\n", speed);
                                 break;
                         case THROTTLE_CONTROL_CODE:
                             speed += 5;
                             if(speed == newSpeed)
                                 updatingSpeed = 0;
-                            printf("ack ricevuto throttle nuova vel %d\n", speed);
+                            //printf("ack ricevuto throttle nuova vel %d\n", speed);
                             break;
                         case HALT_CODE:
                             speed = 0;
                             started = 0;
-                            printf("HALT ricevuto nuova vel %d\n", speed);
+                            //printf("HALT ricevuto nuova vel %d\n", speed);
                             break;
                         case STEER_BY_WIRE_CODE:
                             steering = 0;
-                            printf("Ack ricevuto steer fine sterzata\n");
+                            //printf("Ack ricevuto steer fine sterzata\n");
                             break;
                         case PARK_ASSIST_CODE:
                                 logOutput("assist.log", command);
                                 countParking++;
-                                int i = 0;
-                                printf("command ");
-                                for(int index = 0; index < 4; index ++){
-                                    char str[10];
-                                    sprintf(str, "%02x", command[index]);
-                                    printf("str %s ", str); //continuare qui
+                                for(int i = 0; i < NUM_PARKING_BYTES; i++){
+                                    parkBuffer[i+2] = command[i];
                                 }
-                                printf("\n");
+                                if(searchForBytes(parkBuffer, NUM_PARKING_BYTES+2, parkingFailValues, NUM_PARKING_VALUES)){
+                                    countParking = 0;
+                                    write(pa_sock_pair[0], "P", 1);
+                                }
+                                parkBuffer[0] = command[NUM_PARKING_BYTES-2];
+                                parkBuffer[1] = command[NUM_PARKING_BYTES-1];
                                 if(countParking == PARKING_TIME){
-                                    printf("parcheggio finito\n");
                                     kill(pa_pid, SIGKILL);
                                     started = 0;
                                     parking = 0;
@@ -521,6 +527,7 @@ int main(int argc, char **argv){
             }while(strcmp(buffer,"FINE") != 0);
         }
         close(cen_ecu_sockUDPFd);
+        kill(pa_pid, SIGKILL);
         kill(fwc_pid, SIGKILL);
         kill(tc_pid, SIGKILL);
         kill(bbw_pid, SIGKILL);

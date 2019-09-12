@@ -13,18 +13,22 @@
 #include <malloc.h>
 
 
-void main(){
-    FILE *fptr;
-    fptr = fopen("/dev/random", "r");
-    
-    for(int j = 0; j< 10; j++){
-        char randomBytes[4];
-        fread(randomBytes, 1, 4, fptr);
-        for(int i = 0; i < 4; ++i){
-            printf("sring: %s\n", randomBytes);
-            //printf("Integer: %d\n", randomBytes[i]);
+
+int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
+    //0x 17 2A , ii) 0xD693, iiI) 0xBDD8, iv) 0xFAEE, v) 0x4300
+    for(int i = 0; i < lenght-1; i++){
+        for(int j = 0; j < nValues-1; j+=2){
+            if(toSearchIn[i] == values[j] && toSearchIn[i+1] == values[j+1]){
+                return 1;
+            }
         }
     }
-    fclose(fptr);
+    return 0;
+}
+
+void main(){
+    char values[10] = {0x17, 0x2A, 0xD6, 0x93, 0xBD, 0xD8, 0xFA, 0xEE, 0x43, 0x00};
+    char toSearch[4] = {0x11, 0x23, 0x2A, 0xD6};
+    printf("%d\n", searchForBytes(toSearch, 4, values, 10));
     exit(0);
 }
