@@ -1,34 +1,45 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
+#define _XOPEN_SOURCE 700
+#include <assert.h>
 #include <signal.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <netinet/in.h> /* For AFINET sockets */
-#include <malloc.h>
+#include <stdbool.h> /* false */
+#include <stdio.h> /* perror */
+#include <stdlib.h> /* EXIT_SUCCESS, EXIT_FAILURE */
+#include <sys/wait.h> /* wait, sleep */
+#include <unistd.h> /* fork, write */
 
-
-
-int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
-    //0x 17 2A , ii) 0xD693, iiI) 0xBDD8, iv) 0xFAEE, v) 0x4300
-    for(int i = 0; i < lenght-1; i++){
-        for(int j = 0; j < nValues-1; j+=2){
-            if(toSearchIn[i] == values[j] && toSearchIn[i+1] == values[j+1]){
-                return 1;
-            }
-        }
+void signal_handler(int sig) {
+    char s1[] = "SIGUSR1\n";
+    char s2[] = "SIGUSR2\n";
+    if (sig == SIGUSR1) {
+        write(STDOUT_FILENO, s1, sizeof(s1));
+    } else if (sig == SIGUSR2) {
+        write(STDOUT_FILENO, s2, sizeof(s2));
     }
-    return 0;
+    signal(sig, signal_handler);
 }
 
-void main(){
-    char values[10] = {0x17, 0x2A, 0xD6, 0x93, 0xBD, 0xD8, 0xFA, 0xEE, 0x43, 0x00};
-    char toSearch[4] = {0x11, 0x23, 0x2A, 0xD6};
-    printf("%d\n", searchForBytes(toSearch, 4, values, 10));
-    exit(0);
+int main() {
+    pid_t pid;
+
+    signal(SIGUSR1, signal_handler);
+    signal(SIGUSR2, signal_handler);
+    pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        assert(false);
+    } else {
+        if (pid == 0) {
+            while (1);
+            exit(EXIT_SUCCESS);
+            }
+        while (1) {
+        	printf("invio segnalini");
+            kill(pid, SIGUSR1);
+            sleep(1);
+        	printf("invio segnalini");
+            kill(pid, SIGUSR2);
+            sleep(1);
+        }
+    }
+    return EXIT_SUCCESS;
 }

@@ -32,50 +32,6 @@ void createUDPSocket(int* serverFd, int port){
 
 int main (void) {
 
-/*	sleep(1); //delay to wait central ecu to open the socket
-	int hum_int_Fd, cen_ecu_Len, result;
-	struct sockaddr_in cen_ecu_INETAddress;
-	struct sockaddr*  cen_ecu_SockAddrPtr;
-	cen_ecu_SockAddrPtr=(struct sockaddr*)
-	&cen_ecu_INETAddress;
-	cen_ecu_Len = sizeof (cen_ecu_INETAddress);
-	hum_int_Fd=socket(AF_INET,SOCK_STREAM,DEFAULT_PROTOCOL);
-	cen_ecu_INETAddress.sin_family = AF_INET;
-	cen_ecu_INETAddress.sin_port = htons (HUMAN_INTERFACE_PORT);
-	cen_ecu_INETAddress.sin_addr.s_addr = htonl
-	(INADDR_LOOPBACK);
-	pid_t output_pid;
-	do {
-//Loop until a connection is made with the server 
-		result=connect(hum_int_Fd,  cen_ecu_SockAddrPtr,cen_ecu_Len);
-
-		if (result == -1) {
-			printf("connessione fallita");
-			sleep (1);// Wait, try again 
-		}
-	} while (result == -1);
-	printf("Connected successesfully to Central Ecu\n");
-	printf("Write anything: \n");
-
-	char str[100];
-	output_pid = fork();
-	printf("output_pid %d", output_pid);
-	
-	if( output_pid != 0){
-		do {
-			scanf("%s", &str);
-			write(hum_int_Fd, str, strlen(str)+1);
-		}while( strcmp(str,"FINE") != 0 );
-
-		printf('killing');
-		sleep(3);
-		close (hum_int_Fd); // Close the socket 
-		exit ( 0); // Done 
-	}
-	else {
-		execl("/usr/bin/xterm","xterm", "-e","tail -f  ./centralecu.log",0);
-	} */
-
 	int hum_int_sockFd;
 	struct sockaddr_in cen_ecu_addr;
 	pid_t hum_int_pid;
@@ -91,11 +47,15 @@ int main (void) {
 
 
 	char str[100];
-	output_pid = fork();
-	printf("output_pid %d", output_pid);
+
 	
+	printf("*****************************************************\n");
+	printf("*****************HUMAN INTERFACE INPUT***************\n");
+	printf("*****************************************************\n\n\n");	
+	output_pid = fork();
 	if( output_pid != 0){
 		do {
+			printf("Inserisci un comando: ");
 			scanf("%s", &str);
 			sendto(hum_int_sockFd, (const char *) str, strlen(str) + 1, MSG_CONFIRM,
     		(const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
@@ -106,7 +66,7 @@ int main (void) {
 		exit ( 0); // Done 
 	}
 	else {
-		execl("/usr/bin/xterm","xterm", "-e","tail -f  ./centralecu.log",0);
+		execl("/usr/bin/xterm","xterm", "-e","tail -f  ./ECU.log",0);
 	} 
 
     

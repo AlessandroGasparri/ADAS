@@ -11,10 +11,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h> /* For AFINET sockets */
 #include <malloc.h>
+#include <time.h>
 #include "constants.h"
 
 char randomFile[50];
 char urandomFile[50];
+int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
+int dangerDetected = 0;
 
 //Generic functions that can be in a util file
 int readLine(int fd, char*str) {
@@ -83,6 +86,19 @@ int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
         }
     }
     return 0;
+}
+
+void sig_handler(int sig){
+
+    if(sig == SIGUSR1)
+        updatingSpeed = 0;
+    else if(sig == SIGUSR2){
+        char s2[] = "SIGUSR2\n";
+        write(STDOUT_FILENO, s2, sizeof(s2));
+
+        dangerDetected = 1;
+    }
+    signal(sig, sig_handler);
 }
 
 //Socket and communication functions
@@ -179,6 +195,7 @@ void runBrakeByWire(int fd){
     tv.tv_usec = 100000;
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
     bbw_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+    signal(SIGUSR2, sig_handler);
     while(1){
         int n = 0;
         n = read(fd, str, 1);
@@ -186,34 +203,36 @@ void runBrakeByWire(int fd){
             readLine(fd, str+1);
             char *ptr = substring(str, 5); //strlen("FRENO ") = 5
             newSpeed = atoi(ptr);
-            if(newSpeed >= 0){
-                while(newSpeed > 0){
-                    n = read(fd, str, 1);
-                    if(n > 0){ // PERICOLO O PARCHEGGIO
-                        readLine(fd, str+1);
-                        ptr = substring(str, 5);
-                        newSpeed = atoi(ptr);
-                        ack[0] = HALT_CODE;
-                        ack[1] = '\0';
-                        sendToCenEcu(bbw_sockFd, ack);
-                        printf("Entro qui");
-                        logOutput("brake.log", "ARRESTO AUTO");
-                        break;
-                    }
-                    newSpeed -= 5;
-                    ack[0] = BRAKE_BY_WIRE_CODE;
-                    ack[1] = '\0';
-                    sendToCenEcu(bbw_sockFd, ack);
-                    logOutput("brake.log", "DECREMENTO 5");
-                    sleep(1);
+            while(newSpeed>0 && !dangerDetected){
+                n = read(fd, str, 1);
+                if(n > 0){ //PARCHEGGIO
+                    readLine(fd, str+1);
+                    ptr = substring(str, 5);
+                    newSpeed = atoi(ptr);
                 }
+                newSpeed -= 5;
+                ack[0] = BRAKE_BY_WIRE_CODE;
+                ack[1] = '\0';
+                sendToCenEcu(bbw_sockFd, ack);
+                logOutput("brake.log", "DECREMENTO 5");
+                sleep(1);
             }
-            else{ //PERICOLO
+            if(dangerDetected){
+                printf("PERICOLINO\n");
                 ack[0] = HALT_CODE;
                 ack[1] = '\0';
                 sendToCenEcu(bbw_sockFd, ack);
                 logOutput("brake.log", "ARRESTO AUTO");
+                dangerDetected = 0;
             }
+        }
+        else if(dangerDetected){
+                printf("PERICOLINO\n");
+                ack[0] = HALT_CODE;
+                ack[1] = '\0';
+                sendToCenEcu(bbw_sockFd, ack);
+                logOutput("brake.log", "ARRESTO AUTO");
+                dangerDetected = 0;
         }
         else{
             logOutput("brake.log", "NO ACTION");
@@ -223,6 +242,9 @@ void runBrakeByWire(int fd){
     close(bbw_sockFd);//TODO qui non ci arriva mai credo
     exit(0);
 }
+
+
+
 
 void runThrottleControl(int fd){
     char str[MAXLINE];
@@ -246,10 +268,22 @@ void runThrottleControl(int fd){
             char *ptr = substring(str, 10); //strlen("INCREMENTO ") = 10
             newSpeed = atoi(ptr);
             while(newSpeed > 0){
-                newSpeed -= 5;
-                sendToCenEcu(tc_sockFd, ack);
-                logOutput("throttle.log", "AUMENTO 5");        
-                sleep(1);
+                srand(time(NULL));
+                int randomNumber = (int)(((float)rand()/RAND_MAX)*99999);
+                if(randomNumber != 50000){
+                    newSpeed -= 5;
+                    sendToCenEcu(tc_sockFd, ack);
+                    logOutput("throttle.log", "AUMENTO 5");        
+                    sleep(1);
+                }
+                else {
+                    printf("FALLISCO\n");
+
+                    printf("invio a %d\n", getppid());
+                    kill(getppid(), SIGUSR1);
+                    logOutput("throttle.log", "ACCELERAZIONE FALLITA");  
+                    break; 
+                }
             }
         }
         else{
@@ -333,6 +367,7 @@ void runParkAssist(int fd){
 }
 
 
+
 int main(int argc, char **argv){
     if(!setUpFiles(argv[1])){
         printf("Missing or wrong argument\n");
@@ -353,8 +388,7 @@ int main(int argc, char **argv){
         pid_t bbw_pid; //PID for break by wire
         pid_t sbw_pid; //PID for steer by wire
         pid_t pa_pid; //PID for park assist
-        int speed = 10; //Car speed
-        int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
+        int speed = 50; //Car speed
         int steering = 0;
         int newSpeed = speed;
         char buffer[MAXLINE]; //Buffer to store UDP messages
@@ -364,13 +398,18 @@ int main(int argc, char **argv){
         int countParking = 0;
         char parkingFailValues[NUM_PARKING_VALUES] = {0x17, 0x2A, 0xD6, 0x93, 0xBD, 0xD8, 0xFA, 0xEE, 0x43, 0x00};
         char parkBuffer[NUM_PARKING_BYTES+2]={0, 0, 0, 0, 0, 0};
+        char stroutput[MAXLINE];
 
         createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
         socketpair(AF_UNIX, SOCK_STREAM, 0, tc_sock_pair); //Handshaking of TCP sockets now in tc_sock_pair i have 2 connected sockets
         socketpair(AF_UNIX, SOCK_STREAM, 0, bbw_sock_pair);
         socketpair(AF_UNIX, SOCK_STREAM, 0, sbw_sock_pair);
 
-        printf("Processo padre %d\n", getpid());
+       
+        printf("sono il padre %d\n", getpid());
+
+        signal(SIGUSR1, sig_handler);
+
         if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
             execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
             exit(0);
@@ -411,7 +450,6 @@ int main(int argc, char **argv){
                     }
                 }
                 else if(strcmp(buffer, "PARCHEGGIO") == 0 && started){
-                    char stroutput[MAXLINE];
                     char tmp[10];
                     parking = 1;
                     strcpy(stroutput, "FRENO ");
@@ -424,7 +462,6 @@ int main(int argc, char **argv){
                     code = buffer[0];
                     char *command;
                     command = substring(buffer, 1);
-                    char stroutput[MAXLINE];
                     switch(code){
                         case FRONT_CAMERA_CODE:
                             if(command[0] > '0' && command[0] < '9' ){ //There is a number to process
@@ -453,19 +490,22 @@ int main(int argc, char **argv){
                                         strcat(stroutput, "\0");
                                         write(tc_sock_pair[0], stroutput, strlen(stroutput) + 1);
                                     }
+                                    logOutput("ECU.log", stroutput);
                                 }
                             }
                             else{
                                 printf("command %s\n", command);
                                 if(strcmp(command, "PERICOLO") == 0){
                                     danger = 1;
-                                    strcpy(stroutput, "FRENO -1");
-                                    write(bbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                    strcpy(stroutput, "PERICOLO - ARRESTO AUTO");
+                                    logOutput("ECU.log", stroutput);
+                                    kill(bbw_pid, SIGUSR2);
                                 }
                                 else if(!steering && !parking && (strcmp(command, "DESTRA") == 0 || strcmp(command, "SINISTRA") == 0)){
                                     steering = 1;
                                     strcpy(stroutput, command);
                                     write(sbw_sock_pair[0], stroutput, strlen(stroutput) + 1);
+                                    logOutput("ECU.log", stroutput);
                                 }
                             }
                             logOutput("camera.log", command);
@@ -475,6 +515,8 @@ int main(int argc, char **argv){
                                 if(speed == newSpeed)
                                     updatingSpeed = 0;
                                 if(speed == 0 && parking){
+                                    strcpy(stroutput, "PARCHEGGIO");
+                                    logOutput("ECU.log", stroutput);
                                     socketpair(AF_UNIX, SOCK_STREAM, 0, pa_sock_pair);
                                     if((pa_pid = fork()) == 0){
                                         printf("Park assist %d\n", getpid());
@@ -484,7 +526,7 @@ int main(int argc, char **argv){
                                         close(pa_sock_pair[1]);
                                     }
                                 }
-                                //printf("ack ricevuto nuova vel %d\n", speed);
+                                printf("ack ricevuto nuova vel %d\n", speed);
                                 break;
                         case THROTTLE_CONTROL_CODE:
                             speed += 5;
@@ -495,7 +537,7 @@ int main(int argc, char **argv){
                         case HALT_CODE:
                             speed = 0;
                             started = 0;
-                            //printf("HALT ricevuto nuova vel %d\n", speed);
+                            printf("HALT ricevuto nuova vel %d\n", speed);
                             break;
                         case STEER_BY_WIRE_CODE:
                             steering = 0;
@@ -522,7 +564,6 @@ int main(int argc, char **argv){
                             break;
                         default: printf("Unknown command. %s\n",command);
                     }
-                    logOutput("ECU.log", stroutput);
                 }
             }while(strcmp(buffer,"FINE") != 0);
         }
