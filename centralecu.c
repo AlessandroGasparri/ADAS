@@ -13,6 +13,7 @@
 #include <malloc.h>
 #include <time.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include "constants.h"
 
 char randomFile[50];
@@ -35,7 +36,7 @@ void logOutput(char path[100], char str[MAXLINE], int binary){
         fptr = fopen(path, "a");
     else{
         fptr = fopen(path, "wb");
-        printf("Binario");
+      //  printf("Binario");
     }
     if(fptr == NULL){
         printf("File not found\n");
@@ -43,7 +44,7 @@ void logOutput(char path[100], char str[MAXLINE], int binary){
     else{
         if(binary){
             //fwrite(str, strlen(str), 1,fptr);TODO Da vedere
-            printf("Lunghezza: %d\n", strlen(str));
+          //  printf("Lunghezza: %d\n", strlen(str));
             for(int i = 0; i < strlen(str); i++){
                 char hex[20];
                 sprintf(hex,"%02x",str[i]);
@@ -96,6 +97,17 @@ int setUpFiles(char *mode){
         return 1;
     }
     return 0;
+}
+
+void killProcesses(int count, ...){
+    va_list args;
+    va_start(args, count);
+    for(int i = 0; i< count; i++){
+        int sd = va_arg(args, int);
+        printf("invio k a %d\n", sd);
+        write(sd, "k", 2);
+    }
+    va_end(args);
 }
 
 int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
@@ -284,26 +296,35 @@ void runThrottleControl(int fd){
         n = read(fd, str, 1);
         if(n > 0){
             readLine(fd, str+1);
-            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
-            char *ptr = substring(str, 10); //strlen("INCREMENTO ") = 10
-            newSpeed = atoi(ptr);
-            while(newSpeed > 0){
-                srand(time(NULL));
-                int randomNumber = (int)(((float)rand()/RAND_MAX)*99999);
-                if(randomNumber != 50000){
-                    newSpeed -= 5;
-                    sendToCenEcu(tc_sockFd, ack);
-                    logOutput("throttle.log", "AUMENTO 5", 0);        
-                    sleep(1);
-                }
-                else {
-                    printf("FALLISCO\n");
+            if(strcmp(str, "k") != 0){
 
-                    printf("invio a %d\n", getppid());
-                    kill(getppid(), SIGUSR1);
-                    logOutput("throttle.log", "ACCELERAZIONE FALLITA", 0);  
-                    break; 
+                //printf("throttle %s\n", str);
+                //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
+                char *ptr = substring(str, 10); //strlen("INCREMENTO ") = 10
+                newSpeed = atoi(ptr);
+                while(newSpeed > 0){
+                    srand(time(NULL));
+                    int randomNumber = (int)(((float)rand()/RAND_MAX)*99999);
+                    if(randomNumber != 50000){
+                        newSpeed -= 5;
+                        sendToCenEcu(tc_sockFd, ack);
+                        logOutput("throttle.log", "AUMENTO 5", 0);        
+                        sleep(1);
+                    }
+                    else {
+                        printf("FALLISCO\n");
+
+                        printf("invio a %d\n", getppid());
+                        kill(getppid(), SIGUSR1);
+                        logOutput("throttle.log", "ACCELERAZIONE FALLITA", 0);  
+                        break; 
+                    }
                 }
+            }
+            else{
+                close(fd);
+                printf("throttle finisce");
+                exit(0);
             }
         }
         else{
@@ -404,6 +425,26 @@ void runForwardFacingRadar(){
     }
 }
 
+void runSurroundViewCameras(){
+    int svc_sockFd;
+    FILE *fptr;
+    svc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+    fptr = fopen(urandomFile, "rb");
+    while (1){
+        char randomBytes[NUM_SURROUND_CAMERA_BYTES+2];
+        randomBytes[NUM_SURROUND_CAMERA_BYTES+1] = '\0';
+        randomBytes[0] = SURROUND_CAMERA_CODE;
+        ssize_t result = fread(randomBytes+1, 1, NUM_SURROUND_CAMERA_BYTES, fptr);
+        if (result == NUM_SURROUND_CAMERA_BYTES){
+           // printf("sono svc invio %s\n", randomBytes);
+            logOutput("cameras.log", randomBytes+1, 1);
+            sendToCenEcu(svc_sockFd, randomBytes);
+        }
+        sleep(1);
+    }
+
+}
+
 int main(int argc, char **argv){
     if(!setUpFiles(argv[1])){
         printf("Missing or wrong argument\n");
@@ -425,6 +466,7 @@ int main(int argc, char **argv){
         pid_t sbw_pid; //PID for steer by wire
         pid_t pa_pid; //PID for park assist
         pid_t ffr_pid; //PID for forward facing radar
+        pid_t svc_pid; //PID for surround view cameras
         int speed = 50; //Car speed
         int steering = 0;
         int newSpeed = speed;
@@ -435,6 +477,7 @@ int main(int argc, char **argv){
         int countParking = 0;
         char parkingFailValues[NUM_PARKING_VALUES] = {0x17, 0x2A, 0xD6, 0x93, 0xBD, 0xD8, 0xFA, 0xEE, 0x43, 0x00};
         char parkBuffer[NUM_PARKING_BYTES+2]={0, 0, 0, 0, 0, 0};
+        char cameraBuffer[NUM_SURROUND_CAMERA_BYTES+2]={0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
         char stroutput[MAXLINE];
 
         createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
@@ -491,6 +534,7 @@ int main(int argc, char **argv){
                     }
                 }
                 else if(strcmp(buffer, "PARCHEGGIO") == 0 && started){
+                    printf("Inizio parcheggio");
                     char tmp[10];
                     parking = 1;
                     strcpy(stroutput, "FRENO ");
@@ -505,7 +549,7 @@ int main(int argc, char **argv){
                     command = substring(buffer, 1);
                     switch(code){
                         case FRONT_CAMERA_CODE:
-                            if(command[0] > '0' && command[0] < '9' ){ //There is a number to process
+                            if(command[0] >= '0' && command[0] <='9' ){ //There is a number to process
                                 int readSpeed = atoi(command);
                                 /*
                                     Command handled if speed is not being updated yet
@@ -563,11 +607,14 @@ int main(int argc, char **argv){
                                         printf("Park assist %d\n", getpid());
                                         close(pa_sock_pair[0]);
                                         runParkAssist(pa_sock_pair[1]);
-                                    }else{
+                                    }else if((svc_pid = fork()) == 0){
+                                        runSurroundViewCameras();
+                                    }
+                                    else{
                                         close(pa_sock_pair[1]);
                                     }
                                 }
-                                //printf("ack ricevuto nuova vel %d\n", speed);
+                                printf("ack ricevuto nuova vel %d\n", speed);
                                 break;
                         case THROTTLE_CONTROL_CODE:
                             speed += 5;
@@ -578,6 +625,9 @@ int main(int argc, char **argv){
                         case HALT_CODE:
                             speed = 0;
                             started = 0;
+                            updatingSpeed = 0;
+                            parking = 0;
+                            countParking = 0;
                             //printf("HALT ricevuto nuova vel %d\n", speed);
                             break;
                         case STEER_BY_WIRE_CODE:
@@ -586,25 +636,42 @@ int main(int argc, char **argv){
                             break;
                         case PARK_ASSIST_CODE:
                                 logOutput("assist.log", command, 1);
+                                
+                                printf("%d\n",countParking );
                                 countParking++;
                                 for(int i = 0; i < NUM_PARKING_BYTES; i++){
                                     parkBuffer[i+2] = command[i];
                                 }
                                 if(searchForBytes(parkBuffer, NUM_PARKING_BYTES+2, parkingFailValues, NUM_PARKING_VALUES)){
+                                    logOutput("ECU.log", "SEQUENZA TROVATA - RICOMINCIO PARCHEGGIO", 0);
                                     countParking = 0;
                                     write(pa_sock_pair[0], "P", 1);
                                 }
                                 parkBuffer[0] = command[NUM_PARKING_BYTES-2];
                                 parkBuffer[1] = command[NUM_PARKING_BYTES-1];
                                 if(countParking == PARKING_TIME){
-                                    kill(pa_pid, SIGKILL);
+                                    logOutput("ECU.log", "PARCHEGGIO COMPLETATO", 0);
+                                    kill(svc_pid, SIGKILL);
                                     started = 0;
                                     parking = 0;
                                     countParking = 0;
+                                    updatingSpeed = 0;
                                 }
                             break;
                         case FORWARD_FACING_RADAR_CODE:
                             logOutput("radar.log", command, 1);
+                            break;
+                         case SURROUND_CAMERA_CODE:
+                            for(int i = 0; i < NUM_PARKING_BYTES; i++){
+                                    cameraBuffer[i+2] = command[i];
+                                }
+                                if(searchForBytes(cameraBuffer, NUM_SURROUND_CAMERA_BYTES+2, parkingFailValues, NUM_PARKING_VALUES)){
+                                    logOutput("ECU.log", "SEQUENZA TROVATA - RICOMINCIO PARCHEGGIO", 0);
+                                    countParking = 0;
+                                    write(pa_sock_pair[0], "P", 1);
+                                }
+                                cameraBuffer[0] = command[NUM_SURROUND_CAMERA_BYTES-2];
+                                cameraBuffer[1] = command[NUM_SURROUND_CAMERA_BYTES-1];
                             break;
                         default: printf("Unknown command. %s\n",command);
                     }
@@ -612,9 +679,10 @@ int main(int argc, char **argv){
             }while(strcmp(buffer,"FINE") != 0);
         }
         close(cen_ecu_sockUDPFd);
+        killProcesses(4, tc_sock_pair[0], bbw_sock_pair[0],sbw_sock_pair[0],pa_sock_pair[0]);
         kill(pa_pid, SIGKILL);
         kill(fwc_pid, SIGKILL);
-        kill(tc_pid, SIGKILL);
+        //kill(tc_pid, SIGKILL);
         kill(bbw_pid, SIGKILL);
         kill(sbw_pid, SIGKILL);
         kill(ffr_pid, SIGKILL);
