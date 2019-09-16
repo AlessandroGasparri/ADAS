@@ -36,31 +36,18 @@ void logOutput(char path[100], char str[MAXLINE], int binary){
         fptr = fopen(path, "a");
     else{
         fptr = fopen(path, "wb");
-      //  printf("Binario");
     }
     if(fptr == NULL){
         printf("File not found\n");
     }
     else{
         if(binary){
-            //fwrite(str, strlen(str), 1,fptr);TODO Da vedere
-          //  printf("Lunghezza: %d\n", strlen(str));
-            for(int i = 0; i < strlen(str); i++){
-                char hex[20];
-                sprintf(hex,"%02x",str[i]);
-                if(strlen(hex)>2){
-                    hex[0] = hex[strlen(hex)-2];
-                    hex[1] = hex[strlen(hex)-1];
-                    hex[2] = '\0';
-                }
-                fputs(hex, fptr);
-                fputs(" ", fptr);
-            }
+            fwrite(str, 1, strlen(str), fptr);
         }
         else{
             fputs(str, fptr);
+            fputs("\n", fptr);
         }
-        fputs("\n", fptr);
         fclose(fptr);
     }
 }
@@ -376,7 +363,7 @@ void runSteerByWire(int fd){
             strcpy(toWrite, "STO GIRANDO A ");
             strcat(toWrite, str);
             int i;
-            for(i = 0; i < 4; i++){
+            for(i = 0; i < 4 && !dangerDetected; i++ ){
                 logOutput("steer.log", toWrite, 0);
                 printf("%s\n", toWrite);
                 sleep(1);
@@ -413,6 +400,7 @@ void runParkAssist(int fd){
             toSend[0] = PARK_ASSIST_CODE; //Formatting toSend to conform to standard of a ECU message
             strcpy(toSend+1, randomBytes);
             toSend[5]= '\0';
+            logOutput("assist.log", randomBytes, 1);
             sendToCenEcu(pa_sockFd, toSend);
             i++;
         }
@@ -437,6 +425,7 @@ void runForwardFacingRadar(){
         randomBytes[0] = FORWARD_FACING_RADAR_CODE;
         ssize_t result = fread(randomBytes+1, 1, NUM_FORWARD_FACING_RADAR_BYTES, fptr);
         if (result == NUM_FORWARD_FACING_RADAR_BYTES){
+            logOutput("radar.log", randomBytes+1, 1);
             sendToCenEcu(ffr_sockFd, randomBytes);
         }
         sleep(2);
@@ -495,12 +484,14 @@ int main(int argc, char **argv){
     int parking = 0;
     int countParking = 0;
     char parkingFailValues[NUM_PARKING_VALUES] = {0x17, 0x2A, 0xD6, 0x93, 0xBD, 0xD8, 0xFA, 0xEE, 0x43, 0x00};
+    char facingFailValues[NUM_FACING_VALUES] = {0xa0, 0x0f, 0xb0, 0x72, 0x2f, 0xa8, 0x83, 0x59, 0xce, 0x23};
     char steeringFailValues[NUM_STEERING_VALUES] = {0x41, 0x4e, 0x44, 0x52, 0x4c, 0x41, 0x42, 0x4f, 0x52, 0x41, 0x54, 0x4f, 0x83, 0x59,  0xa0, 0x1f, 0x52, 0x49, 0x51, 0x00};
-    //char steeringFailValues[1] = {0x41};
-    //char parkingFailValues[1] = {0x17};
-    char parkBuffer[NUM_PARKING_VALUES + 2];
-    char cameraBuffer[NUM_PARKING_VALUES + 2];
-    char steerBuffer[NUM_STEERING_VALUES + 2];
+    char parkBuffer[NUM_PARKING_BYTES+2]={0, 0, 0, 0, 0, 0};
+    char cameraBuffer[NUM_SURROUND_CAMERA_BYTES+2]={0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  
+    char facingBuffer[NUM_FORWARD_FACING_RADAR_BYTES+2]={0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  
+    char steerBuffer[NUM_BLIND_SPOT_BYTES + 2]={0, 0, 0, 0, 0, 0, 0, 0, 0, 0};     
+    
+
     char stroutput[MAXLINE];
 
     createUDPSocket(&cen_ecu_sockUDPFd, UDP_CENECU_PORT); //Generating socket for human interface
@@ -516,7 +507,7 @@ int main(int argc, char **argv){
     if((hum_int_pid = fork()) == 0){ //I'm the child humaninterface
         execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
         exit(0);
-    }
+    } 
     else if((tc_pid = fork()) == 0){
         printf("  trottol da %d\n", getpid());
         close(tc_sock_pair[0]); //I'm the child and i close father socket
@@ -547,17 +538,18 @@ int main(int argc, char **argv){
         do{
             int n, len;
             n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
-            /*printf("%s\n", buffer);
-            int bufferlenght = strlen(buffer);
-            printf("Lunghezza buffer: %d\n", bufferlenght);*/
             if(!started){
                 if(strcmp(buffer,"INIZIO") == 0){
                     started = 1;
+                    if(!danger){
+                        
+                    }
                     danger = 0;
                 }
             }
             else if(strcmp(buffer, "PARCHEGGIO") == 0 && started){
-                printf("Inizio parcheggio");
+                printf("PROCEDURA DI PARCHEGGIO INIZIATA\n");
+                logOutput("ECU.log", "PROCEDURA DI PARCHEGGIO INIZIATA",0);
                 char tmp[10];
                 parking = 1;
                 strcpy(stroutput, "FRENO ");
@@ -580,7 +572,6 @@ int main(int argc, char **argv){
                             if(!updatingSpeed && !parking && readSpeed != speed){
                                     updatingSpeed = 1;
                                     newSpeed = readSpeed;
-                                    //printf("updating speed from %d to %d\n", speed, newSpeed);
                                     char valueBuffer[5];
 
                                 if(readSpeed < speed ){
@@ -604,14 +595,20 @@ int main(int argc, char **argv){
                         else{
                             //parking = 0;
                             //steering = 0;
-                            printf("command %s\n", command);
-                            printf("steering %d\n", steering);
-
+                            //if(parking == NULL)
+                                //parking = 0;
+                            //if(steering == NULL)
+                               // steering = 0; 
+                                                           printf("command %s\n", command);
                             printf("parking %d\n", parking);
+                            printf("steering %d\n", steering);
 
                             if(strcmp(command, "PERICOLO") == 0){
                                 danger = 1;
                                 strcpy(stroutput, "PERICOLO - ARRESTO AUTO");
+                                parking = 0;
+                                updatingSpeed = 0;
+                                steering = 0;
                                 logOutput("ECU.log", stroutput, 0);
                                 kill(bbw_pid, SIGUSR2);
                             }
@@ -622,6 +619,7 @@ int main(int argc, char **argv){
                                 logOutput("ECU.log", stroutput, 0);
                                 printf("giro a %s", command);
                                 if((bs_pid = fork()) == 0){
+                                    printf("esegui blid %d", getpid());
                                     runBlindSpot();
                                 }
                             }
@@ -647,13 +645,19 @@ int main(int argc, char **argv){
                                     close(pa_sock_pair[1]);
                                 }
                             }
-                            printf("ack ricevuto nuova vel %d\n", speed);
+                            char logstr[50];
+                            sprintf(logstr,"NUOVA VELOCITA %d", speed);
+                            printf("%s\n", logstr);
+                            logOutput("ECU.log", logstr,0);
                             break;
                     case THROTTLE_CONTROL_CODE:
                         speed += 5;
                         if(speed == newSpeed)
                             updatingSpeed = 0;
-                        //printf("ack ricevuto throttle nuova vel %d\n", speed);
+                           // char logstr[50];
+                            sprintf(logstr,"NUOVA VELOCITA %d", speed);
+                            printf("%s\n", logstr);
+                            logOutput("ECU.log", logstr,0);
                         break;
                     case HALT_CODE:
                         speed = 0;
@@ -666,30 +670,31 @@ int main(int argc, char **argv){
                     case STEER_BY_WIRE_CODE:
                         steering = 0;
                         printf("Ack ricevuto steer fine sterzata, uccido %d\n", bs_pid);
+                        logOutput("ECU.log", "FINE STERZATA",0);
                         kill(bs_pid, SIGKILL);
                         break;
                     case BLIND_SPOT_CODE:
-                        printf("Blind spot 2 %d\n", bs_pid);
-                        for(int i = 0; i < NUM_BLIND_SPOT_BYTES; i++){
-                            steerBuffer[i+2] = command[i];
-                        }
-                        if(searchForBytes(steerBuffer, NUM_BLIND_SPOT_BYTES+2, steeringFailValues, NUM_STEERING_VALUES)){
-                            logOutput("ECU.log", "SEQUENZA TROVATA - STERZATA FALLITA", 0);
+
+                        strcpy(steerBuffer + 2, command);
+
+                         if(searchForBytes(steerBuffer, NUM_BLIND_SPOT_BYTES+2, steeringFailValues, NUM_STEERING_VALUES)){
+                            logOutput("ECU.log", "SEQUENZA TROVATA DA BLIND SPOT- STERZATA FALLITA", 0);
                             countParking = 0;
                             steering = 0;
-                            kill(bbw_pid,SIGUSR1);
+                            kill(bbw_pid,SIGUSR2);
+                            kill(sbw_pid, SIGUSR2);
+                            kill(bs_pid, SIGKILL);
                         }
                         steerBuffer[0] = command[NUM_BLIND_SPOT_BYTES-2];
                         steerBuffer[1] = command[NUM_BLIND_SPOT_BYTES-1];
                     break;
                     case PARK_ASSIST_CODE:
-                        logOutput("assist.log", command, 1);
                         countParking++;
                         for(int i = 0; i < NUM_PARKING_BYTES; i++){
                             parkBuffer[i+2] = command[i];
                         }
                         if(searchForBytes(parkBuffer, NUM_PARKING_BYTES+2, parkingFailValues, NUM_PARKING_VALUES)){
-                            logOutput("ECU.log", "SEQUENZA TROVATA - RICOMINCIO PARCHEGGIO", 0);
+                            logOutput("ECU.log", "SEQUENZA TROVATA DA PARK ASSIST- RICOMINCIO PARCHEGGIO", 0);
                             countParking = 0;
                             write(pa_sock_pair[0], "P", 1);
                         }
@@ -705,7 +710,17 @@ int main(int argc, char **argv){
                         }
                         break;
                     case FORWARD_FACING_RADAR_CODE:
-                        logOutput("radar.log", command, 1);
+
+                        strcpy(facingBuffer + 2, command);
+
+                        if(searchForBytes(facingBuffer, NUM_FACING_VALUES+2, facingFailValues, NUM_FACING_VALUES)){
+                            danger = 1;
+                            printf("SEQUENZA TROVATA DA FACING");
+                            logOutput("ECU.log", "SEQUENZA TROVATA DA FORWARD FACING RADAR - ARRESTO AUTO",0);
+                            kill(bbw_pid, SIGUSR2);
+                        }
+                        facingBuffer[0] = command[NUM_FORWARD_FACING_RADAR_BYTES-2];
+                        facingBuffer[1] = command[NUM_FORWARD_FACING_RADAR_BYTES-1];
                         break;
                      case SURROUND_CAMERA_CODE:
                         for(int i = 0; i < NUM_PARKING_BYTES; i++){
@@ -726,6 +741,15 @@ int main(int argc, char **argv){
     }
     close(cen_ecu_sockUDPFd);
     //killProcesses(4, tc_sock_pair[0], bbw_sock_pair[0],sbw_sock_pair[0],pa_sock_pair[0]);
+    printf("bs %d\n", bs_pid);
+    printf("fwc_pid %d\n", fwc_pid);
+    printf("tc_pid %d\n", tc_pid);
+    printf("hum_int_pid %d\n", hum_int_pid);
+    printf("sbw_pid %d\n", sbw_pid);
+    printf("bbw_pid %d\n", bbw_pid);
+    printf("pa_pid %d\n", pa_pid);
+    printf("ffr_pid %d\n", ffr_pid);
+    printf("bs %d\n", bs_pid);
     kill(pa_pid, SIGKILL);
     kill(fwc_pid, SIGKILL);
     kill(tc_pid, SIGKILL);
@@ -733,6 +757,16 @@ int main(int argc, char **argv){
     kill(sbw_pid, SIGKILL);
     kill(ffr_pid, SIGKILL);
     kill(bs_pid, SIGKILL);
+    
+    /*pid_t fwc_pid; //PID front wide camera process
+    pid_t tc_pid; //PID throttle control process
+    pid_t hum_int_pid; //PID for human interface
+    pid_t bbw_pid; //PID for break by wire
+    pid_t sbw_pid; //PID for steer by wire
+    pid_t pa_pid; //PID for park assist
+    pid_t ffr_pid; //PID for forward facing radar
+    pid_t svc_pid; //PID for surround view cameras
+    pid_t bs_pid; //PID for blind spot*/
     printf("FINE\n");
     exit(0);
     return 0;
