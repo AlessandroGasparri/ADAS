@@ -15,18 +15,18 @@
 #include <fcntl.h>
 #include "constants.h"
 
-#include <stdarg.h>
+#include <unistd.h>
 
-void killProc(int count, ...){
-	va_list args;
-	va_start(args, count);
-	for(int i = 0; i< count; i++){
-		int temp = va_arg(args, int);
-		printf("%d", temp);
-	}
-	va_end(args);
-}
+
 
 int main() {
-    killProc(4,1,2,3,4);
+	struct timespec ts;
+	ts.tv_sec = 0;
+	ts.tv_nsec = 900000000;
+	int res;
+
+	do {
+		res = nanosleep(&ts, &ts);
+	} while(res && errno == EINTR);
+	printf("ciao 2\n");
 }
