@@ -242,7 +242,6 @@ void runBlindSpot(){
             res = nanosleep(&ts, &ts);
         } while(res && errno == EINTR);
         sleep(1);
-
     }
 }
 
@@ -488,12 +487,12 @@ int main(int argc, char **argv){
     pid_t svc_pid; //PID for surround view cameras
     pid_t bs_pid; //PID for blind spot
     int speed = 50; //Car speed
-    char steering = 0;
+    int steering = 0;
     int newSpeed = speed;
     char buffer[MAXLINE]; //Buffer to store UDP messages
     int started = 1; //Boolean variable to tell if process has received INIZIO
     int danger = 0;
-    char parking = 0;
+    int parking = 0;
     int countParking = 0;
     char parkingFailValues[NUM_PARKING_VALUES] = {0x17, 0x2A, 0xD6, 0x93, 0xBD, 0xD8, 0xFA, 0xEE, 0x43, 0x00};
     char steeringFailValues[NUM_STEERING_VALUES] = {0x41, 0x4e, 0x44, 0x52, 0x4c, 0x41, 0x42, 0x4f, 0x52, 0x41, 0x54, 0x4f, 0x83, 0x59,  0xa0, 0x1f, 0x52, 0x49, 0x51, 0x00};
@@ -623,11 +622,8 @@ int main(int argc, char **argv){
                                 logOutput("ECU.log", stroutput, 0);
                                 printf("giro a %s", command);
                                 if((bs_pid = fork()) == 0){
-                                    printf("Blind spot 1 %d\n", getpid());
                                     runBlindSpot();
                                 }
-                                printf("io sono %d\n", getpid());
-                             printf("blid lololol %d\n", bs_pid);
                             }
                         }
                         logOutput("camera.log", command, 0);
@@ -669,10 +665,8 @@ int main(int argc, char **argv){
                         break;
                     case STEER_BY_WIRE_CODE:
                         steering = 0;
-
-                        printf("io sono %d\n", getpid());
                         printf("Ack ricevuto steer fine sterzata, uccido %d\n", bs_pid);
-                        //kill(bs_pid, SIGKILL);
+                        kill(bs_pid, SIGKILL);
                         break;
                     case BLIND_SPOT_CODE:
                         printf("Blind spot 2 %d\n", bs_pid);
@@ -732,16 +726,13 @@ int main(int argc, char **argv){
     }
     close(cen_ecu_sockUDPFd);
     //killProcesses(4, tc_sock_pair[0], bbw_sock_pair[0],sbw_sock_pair[0],pa_sock_pair[0]);
-    printf("blind %d\n", bs_pid);
-    printf("pa %d\n", pa_pid);
-    printf("fwc %d\n", fwc_pid);
-    printf("bbw %d\n", bbw_pid);
     kill(pa_pid, SIGKILL);
     kill(fwc_pid, SIGKILL);
     kill(tc_pid, SIGKILL);
     kill(bbw_pid, SIGKILL);
     kill(sbw_pid, SIGKILL);
     kill(ffr_pid, SIGKILL);
+    kill(bs_pid, SIGKILL);
     printf("FINE\n");
     exit(0);
     return 0;
