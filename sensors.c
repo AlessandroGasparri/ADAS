@@ -104,3 +104,37 @@ void runSurroundViewCameras(char file[]){
     }
 
 }
+
+void runParkAssist(int fd, char file[]){
+    char str[12];
+    int pa_sockFd;
+    int i = 0;
+    int n = 0;
+    pa_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
+    FILE *fptr;
+    fptr = fopen(file, "rb");
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 100000;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);//non bloccante
+    while(i < PARKING_TIME){ //Do it for 30 seconds
+        n = read(fd, str, 1);
+        if(n < 0){
+            char randomBytes[NUM_PARKING_BYTES];
+            fread(randomBytes, NUM_PARKING_BYTES, 1, fptr); //Read 4 times 1 byte of data and puts in a byte array
+            char toSend[6];
+            toSend[0] = PARK_ASSIST_CODE; //Formatting toSend to conform to standard of a ECU message
+            strcpy(toSend+1, randomBytes);
+            toSend[5]= '\0';
+            logOutput("assist.log", randomBytes, 1);
+            sendToCenEcu(pa_sockFd, toSend);
+            i++;
+        }
+        else{
+            i = 0; //Restart parking procedure
+        }
+        sleep(1);
+    }
+    close(pa_sockFd);
+    exit(0);
+}
