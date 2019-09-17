@@ -267,26 +267,26 @@ int main(int argc, char **argv){
         execl("/usr/bin/xterm", "xterm", "./humaninterface", NULL); // execute human interface in a forked process on a new terminal
         exit(0);
     } 
-    else if((tc_pid = fork()) == 0){
+    else if((tc_pid = fork()) == 0){//Throttle control
         printf("  trottol da %d\n", getpid());
         close(tc_sock_pair[0]); //I'm the child and i close father socket
         runThrottleControl(tc_sock_pair[1]); //funzione per controllare la velocita TODO
     }
-    else if((fwc_pid = fork()) == 0 ) {
+    else if((fwc_pid = fork()) == 0 ) {//front windshield
         printf("  camera da %d\n", getpid());
         runFrontWindshieldCamera("input/frontCamera.data");
     }
-    else if((bbw_pid = fork()) == 0){
+    else if((bbw_pid = fork()) == 0){//break by wire
         printf("Break by wire %d\n", getpid());
         close(bbw_sock_pair[0]); 
         runBrakeByWire(bbw_sock_pair[1]);
     }
-    else if((sbw_pid = fork()) == 0){
+    else if((sbw_pid = fork()) == 0){//steer by wire
         printf("Steer by wire %d\n", getpid());
         close(sbw_sock_pair[0]);
         runSteerByWire(sbw_sock_pair[1]);
     }
-    else if((ffr_pid = fork()) == 0){
+    else if((ffr_pid = fork()) == 0){//Forward facing radar
         printf("Forward facing radar %d\n", getpid());
         runForwardFacingRadar(randomFile);
     }
@@ -352,16 +352,6 @@ int main(int argc, char **argv){
                             }
                         }
                         else{
-                            //parking = 0;
-                            //steering = 0;
-                            //if(parking == NULL)
-                                //parking = 0;
-                            //if(steering == NULL)
-                               // steering = 0; 
-                                                           printf("command %s\n", command);
-                            printf("parking %d\n", parking);
-                            printf("steering %d\n", steering);
-
                             if(strcmp(command, "PERICOLO") == 0){
                                 danger = 1;
                                 strcpy(stroutput, "PERICOLO - ARRESTO AUTO");
@@ -519,15 +509,17 @@ int main(int argc, char **argv){
     kill(ffr_pid, SIGKILL);
     kill(bs_pid, SIGKILL);
     
-    /*pid_t fwc_pid; //PID front wide camera process
+    /*
+    pid_t pa_pid; //PID for park assist
+    pid_t fwc_pid; //PID front wide camera process
     pid_t tc_pid; //PID throttle control process
-    pid_t hum_int_pid; //PID for human interface
     pid_t bbw_pid; //PID for break by wire
     pid_t sbw_pid; //PID for steer by wire
-    pid_t pa_pid; //PID for park assist
-    pid_t ffr_pid; //PID for forward facing radar
     pid_t svc_pid; //PID for surround view cameras
-    pid_t bs_pid; //PID for blind spot*/
+    pid_t ffr_pid; //PID for forward facing radar
+    pid_t bs_pid; //PID for blind spot
+    pid_t hum_int_pid; //PID for human interface
+    */
     printf("FINE\n");
     exit(0);
     return 0;
