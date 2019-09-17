@@ -304,7 +304,7 @@ int main(int argc, char **argv){
                 kill(ffr_pid, SIGKILL);
                 kill(bs_pid, SIGKILL);
                 kill(svc_pid, SIGKILL);
-                logOutput("ECU.log", "ACCELERAZIONE FALLITA TERMINO SISTEMA.");
+                logOutput("ECU.log", "ACCELERAZIONE FALLITA TERMINO SISTEMA.",0);
                 exit(1);
             }
             if(!started){
