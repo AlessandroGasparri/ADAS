@@ -23,6 +23,10 @@ int readLine(int fd, char*str) {
     return (n>0);
 }
 
+/**
+    append to a file specified in path, the string str. The path file can be binary or not
+    depending on the flag param binary
+**/
 void logOutput(char path[100], char str[MAXLINE], int binary){
     FILE *fptr;
     if(!binary)
@@ -52,10 +56,7 @@ char* substring(char *src, int from){
         len++;
     }
     len++;
-
-    
     char *dest = (char*) malloc(sizeof(char) * (len + 1));
-    
     for (i = from; i< (from + len); i++ ){
         *dest = *(src + i);
         dest ++;
@@ -64,6 +65,10 @@ char* substring(char *src, int from){
     return dest;
 }
 
+/**
+    this function takes a socket and a message, forwarding this last to an udp socket with UDP_CENECU_PORT
+    where the central ecu is listening on.
+**/
 void sendToCenEcu(int fd, char str[MAXLINE]){
     struct sockaddr_in cen_ecu_addr;
     memset(&cen_ecu_addr, 0 , sizeof(cen_ecu_addr));
@@ -77,7 +82,9 @@ void sendToCenEcu(int fd, char str[MAXLINE]){
 
 
 int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
-    //0x 17 2A , ii) 0xD693, iiI) 0xBDD8, iv) 0xFAEE, v) 0x4300
+    /**
+        bytes sequenties present in values are searched in toSearchIn arrayss
+    **/
     for(int i = 0; i < lenght-1; i++){
         for(int j = 0; j < nValues-1; j+=2){
             if(toSearchIn[i] == values[j] && toSearchIn[i+1] == values[j+1]){
@@ -121,9 +128,6 @@ void createUDPSocket(int* serverFd, int port){
     memset(&serverINETAddress, 0 , sizeof(serverINETAddress));
     serverSockAddrPtr=(struct sockaddr*) &serverINETAddress;
     serverLen = sizeof(serverINETAddress);
-    //clientSockAddrPtr=(struct sockaddr*) &clientINETAddress;
-   // *clientLen=sizeof (clientINETAddress);/*Create a INET socket, bidirectional, default protocol */
-    
     serverINETAddress.sin_family = AF_INET;
     serverINETAddress.sin_port = htons (port);
     serverINETAddress.sin_addr.s_addr= INADDR_ANY;

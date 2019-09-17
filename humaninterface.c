@@ -41,6 +41,10 @@ int main (void) {
 	printf("*****************************************************\n\n\n");	
 	output_pid = fork();
 	if( output_pid != 0){
+
+		/**
+			Human inputs will be sent to central ecu until "FINE" is typed
+		**/
 		do {
 			printf("Inserisci un comando: ");
 			scanf("%s", str);

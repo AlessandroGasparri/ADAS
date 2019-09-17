@@ -12,7 +12,6 @@
 #include "util.h"
 
 void runFrontWindshieldCamera(char file[]){
-
     printf("Front camera is running\n");
     int fc_sockFd;
     FILE *fptr;
@@ -21,17 +20,14 @@ void runFrontWindshieldCamera(char file[]){
     char line[MAXLINE];
     char output[MAXLINE];
     output[0] = FRONT_CAMERA_CODE;
-
     fc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
 
-
+    /**
+        every second a line is read from the file and is sent to central ecu
+    **/
     while (fgets(line, sizeof(line), fptr)){
-        //speedLimit = atoi(line);
         strcpy(output + 1, line);
         output[strlen(output)-1] = '\0';
-        //printf("line: %s ,Lunga: %d", line, strlen(line));
-        //printf("outp: %s ,Lunga: %d\n\n", output, strlen(output));
-
         sendToCenEcu(fc_sockFd, output);
         sleep(1);
     }
@@ -49,13 +45,17 @@ void runBlindSpot(char file[]){
     ts.tv_sec = 0;
     ts.tv_nsec = 500000000;
     int res;
+
+    /**
+        every 0.5 seconds n bytes are read from 'file', depending on NUM_BLIND_SPOT_BYTES, and are sent to central ecu,
+        logging them on spot.log
+    **/
     while (1){
         char randomBytes[NUM_BLIND_SPOT_BYTES+2];
         randomBytes[NUM_BLIND_SPOT_BYTES+1] = '\0';
         randomBytes[0] = BLIND_SPOT_CODE;
         ssize_t result = fread(randomBytes+1, 1, NUM_BLIND_SPOT_BYTES, fptr);
         if (result == NUM_BLIND_SPOT_BYTES){
-           // printf("sono svc invio %s\n", randomBytes);
             logOutput("spot.log", randomBytes+1, 1);
             sendToCenEcu(bs_sockFd, randomBytes);
         }
@@ -72,6 +72,10 @@ void runForwardFacingRadar(char file[]){
     ffr_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
     fptr = fopen(file, "rb");
     size_t randomDataLen = 0;
+    /**
+        every 2 seconds n bytes are read from 'file', depending on NUM_FORWARD_FACING_RADAR_BYTES, and are sent to central ecu,
+        logging them on radar.log
+    **/
     while (1){
         char randomBytes[NUM_FORWARD_FACING_RADAR_BYTES+2];
         randomBytes[NUM_FORWARD_FACING_RADAR_BYTES+1] = '\0';
@@ -90,13 +94,16 @@ void runSurroundViewCameras(char file[]){
     FILE *fptr;
     svc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
     fptr = fopen(file, "rb");
+    /**
+        every 1 seconds n bytes are read from 'file', depending on NUM_SURROUND_CAMERA_BYTES, and are sent to central ecu,
+        logging them on cameras.log
+    **/
     while (1){
         char randomBytes[NUM_SURROUND_CAMERA_BYTES+2];
         randomBytes[NUM_SURROUND_CAMERA_BYTES+1] = '\0';
         randomBytes[0] = SURROUND_CAMERA_CODE;
         ssize_t result = fread(randomBytes+1, 1, NUM_SURROUND_CAMERA_BYTES, fptr);
         if (result == NUM_SURROUND_CAMERA_BYTES){
-           // printf("sono svc invio %s\n", randomBytes);
             logOutput("cameras.log", randomBytes+1, 1);
             sendToCenEcu(svc_sockFd, randomBytes);
         }
@@ -117,6 +124,10 @@ void runParkAssist(int fd, char file[]){
     tv.tv_sec = 0;
     tv.tv_usec = 100000;
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);//non bloccante
+    /**
+        every 1 seconds n bytes are read from 'file', depending on NUM_PARKING_BYTES, and are sent to central ecu,
+        logging them on assist.log with a max of PARKING_TIME times
+    **/
     while(i < PARKING_TIME){ //Do it for 30 seconds
         n = read(fd, str, 1);
         if(n < 0){
