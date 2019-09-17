@@ -13,9 +13,7 @@
 #include <sys/shm.h>
 #include <signal.h>
 #include <netinet/in.h> /* For AF_INET sockets */
-#define DEFAULT_PROTOCOL 0
-#define HUMAN_INTERFACE_PORT 1025
-#define MAXLINE 1024
+#include "constants.h"
 
 
 void createUDPSocket(int* serverFd, int port){
@@ -51,7 +49,7 @@ int main (void) {
 	hum_int_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
 	memset(&cen_ecu_addr, 0 , sizeof(cen_ecu_addr));
 	cen_ecu_addr.sin_family = AF_INET;
-    cen_ecu_addr.sin_port = htons (1026);
+    cen_ecu_addr.sin_port = htons (UDP_CENECU_PORT);
     cen_ecu_addr.sin_addr.s_addr= INADDR_ANY;
 
 
