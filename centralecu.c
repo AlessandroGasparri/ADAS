@@ -21,6 +21,7 @@
 char randomFile[50];
 char urandomFile[50];
 int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by wire
+int throttleFail = 0;
 int dangerDetected = 0;
 
 //Generic functions that can be in a util file
@@ -47,7 +48,7 @@ int setUpFiles(char *mode){
 void sig_handler(int sig){
     if(sig == SIGUSR1){
         updatingSpeed = 0;
-        //TODO kill everuthing e send to human interface output messaggio terminazione
+        throttleFail = 1;
     }
     else if(sig == SIGUSR2){
         char s2[] = "SIGUSR2\n";
@@ -115,7 +116,6 @@ void runBrakeByWire(int fd){
         }
         sleep(1);
     }
-    close(bbw_sockFd);//TODO qui non ci arriva mai credo
     exit(0);
 }
 
@@ -137,8 +137,6 @@ void runThrottleControl(int fd){
         n = read(fd, str, 1);
         if(n > 0){
             readLine(fd, str+1);
-            //printf("throttle %s\n", str);
-            //splits into two string by delimiter "-" and puts the current speed integer value in speeds[0] the one to reach in speeds[1]
             char *ptr = substring(str, 10); //strlen("INCREMENTO ") = 10
             newSpeed = atoi(ptr);
             while(newSpeed > 0){
@@ -297,6 +295,18 @@ int main(int argc, char **argv){
         do{
             int n, len;
             n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
+            if(throttleFail){
+                kill(pa_pid, SIGKILL);
+                kill(fwc_pid, SIGKILL);
+                kill(tc_pid, SIGKILL);
+                kill(bbw_pid, SIGKILL);
+                kill(sbw_pid, SIGKILL);
+                kill(ffr_pid, SIGKILL);
+                kill(bs_pid, SIGKILL);
+                kill(svc_pid, SIGKILL);
+                logOutput("ECU.log", "ACCELERAZIONE FALLITA TERMINO SISTEMA.");
+                exit(1);
+            }
             if(!started){
                 if(strcmp(buffer,"INIZIO") == 0){
                     logOutput("ECU.log", "AVVIO SISTEMA",0);
