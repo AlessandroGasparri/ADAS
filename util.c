@@ -64,6 +64,16 @@ char* substring(char *src, int from){
     return dest;
 }
 
+void sendToCenEcu(int fd, char str[MAXLINE]){
+    struct sockaddr_in cen_ecu_addr;
+    memset(&cen_ecu_addr, 0 , sizeof(cen_ecu_addr));
+    cen_ecu_addr.sin_family = AF_INET;
+    cen_ecu_addr.sin_port = htons (UDP_CENECU_PORT);
+    cen_ecu_addr.sin_addr.s_addr= INADDR_ANY;
+
+    sendto(fd, (const char *) str, strlen(str) + 1, MSG_CONFIRM,
+        (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
+}
 
 
 int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
