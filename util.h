@@ -13,6 +13,5 @@ extern int searchForBytes(char *, int , char *, int);
 
 extern void createSocket(int* , struct sockaddr* , int* , int );
     
-
 extern void createUDPSocket(int*, int);
     

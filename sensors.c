@@ -12,7 +12,6 @@
 #include "util.h"
 
 void runFrontWindshieldCamera(char file[]){
-
     printf("Front camera is running\n");
     int fc_sockFd;
     FILE *fptr;
