@@ -53,9 +53,13 @@ int main (void) {
 		exit ( 0); // Done 
 	}
 	else {
+		FILE *tmpFd;
+		if((tmpFd = fopen("ECU.log", "r")) == NULL){
+			tmpFd = fopen("ECU.log", "w"); 
+		}
+		fclose(tmpFd);
 		execl("/usr/bin/xterm","xterm", "-e","tail -f  ./ECU.log",(char *)0);
-	} 
-
+	}
     
 
     close(hum_int_sockFd);
