@@ -14,28 +14,10 @@
 #include <signal.h>
 #include <netinet/in.h> /* For AF_INET sockets */
 #include "constants.h"
+#include "util.h"
 
 
-void createUDPSocket(int* serverFd, int port){
-    int serverLen;
-    struct sockaddr_in serverINETAddress;/*Server address*/
-   // struct sockaddr_in clientINETAddress;/*Client address*/
-    struct sockaddr* serverSockAddrPtr;/*Ptr to server*/
-    /* Ignore death-of-child signals to prevent zombies */
-    signal (SIGCHLD, SIG_IGN);
-    *serverFd=socket (AF_INET, SOCK_DGRAM, DEFAULT_PROTOCOL);
 
-    memset(&serverINETAddress, 0 , sizeof(serverINETAddress));
-    serverSockAddrPtr=(struct sockaddr*) &serverINETAddress;
-    serverLen = sizeof(serverINETAddress);
-    //clientSockAddrPtr=(struct sockaddr*) &clientINETAddress;
-   // *clientLen=sizeof (clientINETAddress);/*Create a INET socket, bidirectional, default protocol */
-    
-    serverINETAddress.sin_family = AF_INET;
-    serverINETAddress.sin_port = htons (port);
-    serverINETAddress.sin_addr.s_addr= INADDR_ANY;
-    bind(*serverFd, serverSockAddrPtr, serverLen);
-}
 
 int main (void) {
 

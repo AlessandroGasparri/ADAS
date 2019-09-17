@@ -15,6 +15,8 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include "constants.h"
+#include "util.h"
+#include "sensors.h"
 
 char randomFile[50];
 char urandomFile[50];
@@ -22,54 +24,8 @@ int updatingSpeed = 0; // semaphore to prevent cen ecu to send data to break by 
 int dangerDetected = 0;
 
 //Generic functions that can be in a util file
-int readLine(int fd, char*str) {
-    int n; 
-    do {
-        n = read(fd,str,1);
-    } while ( n> 0 && *str++ != '\0');
-    return (n>0);
-}
 
-void logOutput(char path[100], char str[MAXLINE], int binary){
-    FILE *fptr;
-    if(!binary)
-        fptr = fopen(path, "a");
-    else{
-        fptr = fopen(path, "wb");
-    }
-    if(fptr == NULL){
-        printf("File not found\n");
-    }
-    else{
-        if(binary){
-            fwrite(str, 1, strlen(str), fptr);
-        }
-        else{
-            fputs(str, fptr);
-            fputs("\n", fptr);
-        }
-        fclose(fptr);
-    }
-}
 
-char* substring(char *src, int from){
-
-    int len = 0, i = 0;
-    while(*(src + from + len) != '\0'){
-        len++;
-    }
-    len++;
-
-    
-    char *dest = (char*) malloc(sizeof(char) * (len + 1));
-    
-    for (i = from; i< (from + len); i++ ){
-        *dest = *(src + i);
-        dest ++;
-    }
-    dest -= len;
-    return dest;
-}
 
 int setUpFiles(char *mode){
     if (mode == NULL) return 0;
@@ -86,28 +42,7 @@ int setUpFiles(char *mode){
     return 0;
 }
 
-void killProcesses(int count, ...){
-    va_list args;
-    va_start(args, count);
-    for(int i = 0; i< count; i++){
-        int sd = va_arg(args, int);
-        printf("invio k a %d\n", sd);
-        write(sd, "k", 2);
-    }
-    va_end(args);
-}
 
-int searchForBytes(char *toSearchIn, int lenght, char *values, int nValues){
-    //0x 17 2A , ii) 0xD693, iiI) 0xBDD8, iv) 0xFAEE, v) 0x4300
-    for(int i = 0; i < lenght-1; i++){
-        for(int j = 0; j < nValues-1; j+=2){
-            if(toSearchIn[i] == values[j] && toSearchIn[i+1] == values[j+1]){
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
 
 void sig_handler(int sig){
     if(sig == SIGUSR1){
@@ -123,114 +58,7 @@ void sig_handler(int sig){
     signal(sig, sig_handler);
 }
 
-//Socket and communication functions
-void createSocket(int* serverFd, struct sockaddr* clientSockAddrPtr, int* clientLen, int port){
-    int serverLen;
-    struct sockaddr_in serverINETAddress;/*Server address*/
-    struct sockaddr_in clientINETAddress;/*Client address*/
-    struct sockaddr* serverSockAddrPtr;/*Ptr to server*/
-    /* Ignore death-of-child signals to prevent zombies */
-    signal (SIGCHLD, SIG_IGN);
-    serverSockAddrPtr=(struct sockaddr*) &serverINETAddress;
-    serverLen = sizeof(serverINETAddress);
-    clientSockAddrPtr=(struct sockaddr*) &clientINETAddress;
-    *clientLen=sizeof (clientINETAddress);/*Create a INET socket, bidirectional, default protocol */
-    *serverFd=socket (AF_INET, SOCK_STREAM, DEFAULT_PROTOCOL);
-    serverINETAddress.sin_family = AF_INET;
-    serverINETAddress.sin_port = htons (port);
-    serverINETAddress.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
-    bind(*serverFd, serverSockAddrPtr, serverLen);
-    listen (*serverFd, 2);
-}
 
-void createUDPSocket(int* serverFd, int port){
-    int serverLen;
-    struct sockaddr_in serverINETAddress;/*Server address*/
-   // struct sockaddr_in clientINETAddress;/*Client address*/
-    struct sockaddr* serverSockAddrPtr;/*Ptr to server*/
-    /* Ignore death-of-child signals to prevent zombies */
-    signal (SIGCHLD, SIG_IGN);
-    *serverFd=socket (AF_INET, SOCK_DGRAM, DEFAULT_PROTOCOL);
-
-    memset(&serverINETAddress, 0 , sizeof(serverINETAddress));
-    serverSockAddrPtr=(struct sockaddr*) &serverINETAddress;
-    serverLen = sizeof(serverINETAddress);
-    //clientSockAddrPtr=(struct sockaddr*) &clientINETAddress;
-   // *clientLen=sizeof (clientINETAddress);/*Create a INET socket, bidirectional, default protocol */
-    
-    serverINETAddress.sin_family = AF_INET;
-    serverINETAddress.sin_port = htons (port);
-    serverINETAddress.sin_addr.s_addr= INADDR_ANY;
-    bind(*serverFd, serverSockAddrPtr, serverLen);
-}
-
-void sendToCenEcu(int fd, char str[MAXLINE]){
-    struct sockaddr_in cen_ecu_addr;
-    memset(&cen_ecu_addr, 0 , sizeof(cen_ecu_addr));
-    cen_ecu_addr.sin_family = AF_INET;
-    cen_ecu_addr.sin_port = htons (UDP_CENECU_PORT);
-    cen_ecu_addr.sin_addr.s_addr= INADDR_ANY;
-
-    sendto(fd, (const char *) str, strlen(str) + 1, MSG_CONFIRM,
-        (const struct sockaddr *) &cen_ecu_addr, sizeof(cen_ecu_addr));
-}
-
-
-//Sensors functions
-void runFrontWindshieldCamera(){
-
-    printf("Front camera is running\n");
-    int fc_sockFd;
-    FILE *fptr;
-    fptr = fopen("input/frontCamera.data", "r");
-    int speedLimit;
-    char line[MAXLINE];
-    char output[MAXLINE];
-    output[0] = FRONT_CAMERA_CODE;
-
-    fc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
-
-
-    while (fgets(line, sizeof(line), fptr)){
-        //speedLimit = atoi(line);
-        strcpy(output + 1, line);
-        output[strlen(output)-1] = '\0';
-        //printf("line: %s ,Lunga: %d", line, strlen(line));
-        //printf("outp: %s ,Lunga: %d\n\n", output, strlen(output));
-
-        sendToCenEcu(fc_sockFd, output);
-        sleep(1);
-    }
-    fclose(fptr);
-    close(fc_sockFd);
-    exit(0);
-}
-
-void runBlindSpot(){
-    int bs_sockFd;
-    FILE *fptr;
-    bs_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
-    fptr = fopen(urandomFile, "rb");
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = 500000000;
-    int res;
-    while (1){
-        char randomBytes[NUM_BLIND_SPOT_BYTES+2];
-        randomBytes[NUM_BLIND_SPOT_BYTES+1] = '\0';
-        randomBytes[0] = BLIND_SPOT_CODE;
-        ssize_t result = fread(randomBytes+1, 1, NUM_BLIND_SPOT_BYTES, fptr);
-        if (result == NUM_BLIND_SPOT_BYTES){
-           // printf("sono svc invio %s\n", randomBytes);
-            logOutput("spot.log", randomBytes+1, 1);
-            sendToCenEcu(bs_sockFd, randomBytes);
-        }
-        do {
-            res = nanosleep(&ts, &ts);
-        } while(res && errno == EINTR);
-        sleep(1);
-    }
-}
 
 //Actuators functionz
 void runBrakeByWire(int fd){
@@ -413,44 +241,7 @@ void runParkAssist(int fd){
     exit(0);
 }
 
-void runForwardFacingRadar(){
-    int ffr_sockFd;
-    FILE *fptr;
-    ffr_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
-    fptr = fopen(randomFile, "rb");
-    size_t randomDataLen = 0;
-    while (1){
-        char randomBytes[NUM_FORWARD_FACING_RADAR_BYTES+2];
-        randomBytes[NUM_FORWARD_FACING_RADAR_BYTES+1] = '\0';
-        randomBytes[0] = FORWARD_FACING_RADAR_CODE;
-        ssize_t result = fread(randomBytes+1, 1, NUM_FORWARD_FACING_RADAR_BYTES, fptr);
-        if (result == NUM_FORWARD_FACING_RADAR_BYTES){
-            logOutput("radar.log", randomBytes+1, 1);
-            sendToCenEcu(ffr_sockFd, randomBytes);
-        }
-        sleep(2);
-    }
-}
 
-void runSurroundViewCameras(){
-    int svc_sockFd;
-    FILE *fptr;
-    svc_sockFd = socket(AF_INET, SOCK_DGRAM, 0);
-    fptr = fopen(urandomFile, "rb");
-    while (1){
-        char randomBytes[NUM_SURROUND_CAMERA_BYTES+2];
-        randomBytes[NUM_SURROUND_CAMERA_BYTES+1] = '\0';
-        randomBytes[0] = SURROUND_CAMERA_CODE;
-        ssize_t result = fread(randomBytes+1, 1, NUM_SURROUND_CAMERA_BYTES, fptr);
-        if (result == NUM_SURROUND_CAMERA_BYTES){
-           // printf("sono svc invio %s\n", randomBytes);
-            logOutput("cameras.log", randomBytes+1, 1);
-            sendToCenEcu(svc_sockFd, randomBytes);
-        }
-        sleep(1);
-    }
-
-}
 
 int main(int argc, char **argv){
     if(!setUpFiles(argv[1])){
@@ -515,7 +306,7 @@ int main(int argc, char **argv){
     }
     else if((fwc_pid = fork()) == 0 ) {
         printf("  camera da %d\n", getpid());
-        runFrontWindshieldCamera();
+        runFrontWindshieldCamera("input/frontCamera.data");
     }
     else if((bbw_pid = fork()) == 0){
         printf("Break by wire %d\n", getpid());
@@ -529,7 +320,7 @@ int main(int argc, char **argv){
     }
     else if((ffr_pid = fork()) == 0){
         printf("Forward facing radar %d\n", getpid());
-        runForwardFacingRadar();
+        runForwardFacingRadar(randomFile);
     }
     else {//In this else i'm the father
         close(tc_sock_pair[1]); //I'm the father and i close child socket
@@ -548,10 +339,10 @@ int main(int argc, char **argv){
                 }
             }
             else if(strcmp(buffer, "PARCHEGGIO") == 0 && started){
+                parking = 1;
                 printf("PROCEDURA DI PARCHEGGIO INIZIATA\n");
                 logOutput("ECU.log", "PROCEDURA DI PARCHEGGIO INIZIATA",0);
                 char tmp[10];
-                parking = 1;
                 strcpy(stroutput, "FRENO ");
                 sprintf(tmp, "%d", speed);
                 strcat(stroutput, tmp);
@@ -620,7 +411,7 @@ int main(int argc, char **argv){
                                 printf("giro a %s", command);
                                 if((bs_pid = fork()) == 0){
                                     printf("esegui blid %d", getpid());
-                                    runBlindSpot();
+                                    runBlindSpot(urandomFile);
                                 }
                             }
                         }
@@ -639,7 +430,7 @@ int main(int argc, char **argv){
                                     close(pa_sock_pair[0]);
                                     runParkAssist(pa_sock_pair[1]);
                                 }else if((svc_pid = fork()) == 0){
-                                    runSurroundViewCameras();
+                                    runSurroundViewCameras(urandomFile);
                                 }
                                 else{
                                     close(pa_sock_pair[1]);
@@ -651,13 +442,15 @@ int main(int argc, char **argv){
                             logOutput("ECU.log", logstr,0);
                             break;
                     case THROTTLE_CONTROL_CODE:
-                        speed += 5;
-                        if(speed == newSpeed)
-                            updatingSpeed = 0;
-                           // char logstr[50];
-                            sprintf(logstr,"NUOVA VELOCITA %d", speed);
-                            printf("%s\n", logstr);
-                            logOutput("ECU.log", logstr,0);
+                        if(!parking){
+                                speed += 5;
+                            if(speed == newSpeed)
+                                updatingSpeed = 0;
+                               // char logstr[50];
+                                sprintf(logstr,"NUOVA VELOCITA %d", speed);
+                                printf("%s\n", logstr);
+                                logOutput("ECU.log", logstr,0);
+                        }
                         break;
                     case HALT_CODE:
                         speed = 0;
