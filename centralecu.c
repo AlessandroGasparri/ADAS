@@ -234,7 +234,7 @@ int main(int argc, char **argv){
     pid_t ffr_pid; //PID for forward facing radar
     pid_t svc_pid; //PID for surround view cameras
     pid_t bs_pid; //PID for blind spot
-    int speed = 50; //Car speed
+    int speed = 0; //Car speed
     int steering = 0;
     int newSpeed = speed;
     char buffer[MAXLINE]; //Buffer to store UDP messages
@@ -299,11 +299,8 @@ int main(int argc, char **argv){
             n = recvfrom(cen_ecu_sockUDPFd,(char *)buffer, MAXLINE, MSG_WAITALL, clientAddr, &len);
             if(!started){
                 if(strcmp(buffer,"INIZIO") == 0){
+                    logOutput("ECU.log", "AVVIO SISTEMA",0);
                     started = 1;
-                    if(!danger){
-                        
-                    }
-                    danger = 0;
                 }
             }
             else if(strcmp(buffer, "PARCHEGGIO") == 0 && started){
@@ -518,6 +515,7 @@ int main(int argc, char **argv){
     kill(sbw_pid, SIGKILL);
     kill(ffr_pid, SIGKILL);
     kill(bs_pid, SIGKILL);
+    kill(svc_pid, SIGKILL);
     
     /*pid_t fwc_pid; //PID front wide camera process
     pid_t tc_pid; //PID throttle control process
